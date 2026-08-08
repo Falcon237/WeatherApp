@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+* copy*.py
+
+.env
+.env.*
+
+*.log
+netatmo_download.log
+
+*.sqlite
+*.sqlite-*
+*.db
+*.pkl
+*.pkl.gz
+
+.vscode/
