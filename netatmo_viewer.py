@@ -465,6 +465,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .thr-slider-row input[type=range] { flex:1; min-width:200px; accent-color:var(--accent); height:6px; cursor:pointer; }
   .thr-slider-row .thr-val { background:var(--accent); color:#fff; padding:3px 10px; border-radius:14px; font-weight:600; font-size:12px; min-width:60px; text-align:center; }
   .thr-slider-row .thr-info { color:var(--muted); font-size:11px; }
+  .thr-slider-row.compare-row label { display:flex; align-items:center; gap:6px; min-width:120px; }
+  .thr-slider-row.compare-row input[type=checkbox] { accent-color:var(--accent); }
+  .thr-slider-row .thr-val.compare { background:#30363d; color:var(--text); }
+  .insight-pills { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 10px; }
+  .insight-pill { background:#0d1117; border:1px solid var(--border); border-radius:14px; padding:4px 10px; font-size:11px; color:var(--muted); }
+  .insight-pill b { color:var(--text); }
+  .insight-pill.hot b { color:var(--red); }
+  .insight-pill.trop b { color:#bc8cff; }
 
   /* ── Indoor Komfort-Cockpit ── */
   .cockpit-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:12px; margin-bottom:16px; }
@@ -574,6 +582,12 @@ let aggMode    = 'raw';
 let selModules = new Set();
 let selSensors = new Set();
 let chartInstances = {};
+let favTropThreshold = 20;
+let favTropCompareThreshold = 18;
+let favTropCompareEnabled = true;
+let favHotThreshold = 30;
+let favHotCompareThreshold = 25;
+let favHotCompareEnabled = true;
 
 /* ── Helpers ── */
 function fmt(n, unit) {
@@ -730,6 +744,161 @@ function setAgg(btn) {
   setAggMode(btn.dataset.mode);
 }
 
+function isTemperatureSensor(sensor, unit) {
+  return /°?\s*C/i.test(unit || PAYLOAD.units[sensor] || '') || /temp|temperatur|temperature/i.test(sensor);
+}
+
+function renderFavoriteThresholdCard(container, days, years, cfg) {
+  const yearIndex = Object.fromEntries(years.map((year, index) => [year, index]));
+  const countFor = threshold => {
+    const counts = years.map(() => 0);
+    days.forEach(day => {
+      if (cfg.match(day, threshold)) counts[yearIndex[day.year]]++;
+    });
+    return counts;
+  };
+  const countBetween = (a, b) => {
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    const counts = years.map(() => 0);
+    if (lo === hi) return counts;
+    days.forEach(day => {
+      const value = cfg.value(day);
+      if (value > lo && value <= hi) counts[yearIndex[day.year]]++;
+    });
+    return counts;
+  };
+  const topOf = counts => counts.reduce(
+    (best, value, index) => value > best.value ? { year: years[index], value } : best,
+    { year: years[0], value: counts[0] || 0 });
+  const fmtT = value => value.toLocaleString('de-DE', {maximumFractionDigits:1});
+
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  card.innerHTML = `
+    <div class="chart-header"><h2>${cfg.title}</h2><span class="unit-badge">Tage / Jahr</span></div>
+    <div class="thr-slider-row">
+      <label for="${cfg.sliderId}">${cfg.sliderLabel}</label>
+      <input type="range" id="${cfg.sliderId}" min="${cfg.min}" max="${cfg.max}" step="${cfg.step}" value="${cfg.threshold}">
+      <span class="thr-val" id="${cfg.valueId}">${cfg.formatLabel(cfg.threshold)}</span>
+    </div>
+    <div class="thr-slider-row compare-row">
+      <label for="${cfg.compareToggleId}"><input type="checkbox" id="${cfg.compareToggleId}" ${cfg.compareEnabled ? 'checked' : ''}> Vergleich</label>
+      <input type="range" id="${cfg.compareSliderId}" min="${cfg.min}" max="${cfg.max}" step="${cfg.step}" value="${cfg.compareThreshold}">
+      <span class="thr-val compare" id="${cfg.compareValueId}">${cfg.formatLabel(cfg.compareThreshold)}</span>
+    </div>
+    <div class="insight-pills" id="${cfg.insightId}"></div>
+    <div class="chart-wrap tall"><canvas id="${cfg.chartId}"></canvas></div>
+    <div class="chart-hint">${cfg.hint}</div>`;
+  container.appendChild(card);
+
+  const slider = document.getElementById(cfg.sliderId);
+  const compareToggle = document.getElementById(cfg.compareToggleId);
+  const compareSlider = document.getElementById(cfg.compareSliderId);
+  const valueEl = document.getElementById(cfg.valueId);
+  const compareValueEl = document.getElementById(cfg.compareValueId);
+  const insightEl = document.getElementById(cfg.insightId);
+
+  const chart = new Chart(document.getElementById(cfg.chartId).getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [
+        { label: cfg.formatLabel(cfg.threshold), data: countFor(cfg.threshold), backgroundColor: cfg.color + 'aa', borderColor: cfg.color, borderWidth: 1 },
+        { type: 'line', label: cfg.formatLabel(cfg.compareThreshold), data: countFor(cfg.compareThreshold), borderColor: cfg.compareColor, backgroundColor: cfg.compareColor + '22', borderWidth: 2, borderDash: [6, 4], pointRadius: 3, tension: 0.25, hidden: !cfg.compareEnabled },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } },
+        y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' }, beginAtZero: true, title: { display: true, text: 'Tage / Jahr', color: '#8b949e' } },
+      },
+      plugins: {
+        legend: { labels: { color: '#e6edf3', boxWidth: 12, padding: 10 } },
+        tooltip: { backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1, titleColor: '#e6edf3', bodyColor: '#8b949e', callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} Tage` } },
+      },
+    },
+  });
+  chartInstances[cfg.chartKey] = chart;
+
+  const updateInsights = () => {
+    const threshold = +slider.value;
+    const compareThreshold = +compareSlider.value;
+    const top = topOf(countFor(threshold));
+    const parts = [`<span class="insight-pill ${cfg.kind}"><b>${top.year}</b> stärkstes Jahr: ${top.value} Tage</span>`];
+    if (compareToggle.checked) {
+      const betweenTop = topOf(countBetween(threshold, compareThreshold));
+      const lo = fmtT(Math.min(threshold, compareThreshold));
+      const hi = fmtT(Math.max(threshold, compareThreshold));
+      parts.push(`<span class="insight-pill"><b>${betweenTop.year}</b> zwischen ${lo} und ${hi} °C: ${betweenTop.value} Tage</span>`);
+    }
+    insightEl.innerHTML = parts.join('');
+  };
+
+  const updateChart = () => {
+    const threshold = +slider.value;
+    const compareThreshold = +compareSlider.value;
+    cfg.setThreshold(threshold);
+    cfg.setCompareThreshold(compareThreshold);
+    cfg.setCompareEnabled(compareToggle.checked);
+    valueEl.textContent = cfg.formatLabel(threshold);
+    compareValueEl.textContent = cfg.formatLabel(compareThreshold);
+    chart.data.datasets[0].label = cfg.formatLabel(threshold);
+    chart.data.datasets[0].data = countFor(threshold);
+    chart.data.datasets[1].label = cfg.formatLabel(compareThreshold);
+    chart.data.datasets[1].data = countFor(compareThreshold);
+    chart.data.datasets[1].hidden = !compareToggle.checked;
+    updateInsights();
+    chart.update('none');
+  };
+
+  slider.addEventListener('input', updateChart);
+  compareSlider.addEventListener('input', updateChart);
+  compareToggle.addEventListener('change', updateChart);
+  updateInsights();
+}
+
+function renderTemperatureFavorites(container, raw, sensor, unit, prefix) {
+  if (!isTemperatureSensor(sensor, unit)) return;
+  const dayMap = {};
+  raw.forEach(d => {
+    const dt = new Date(d.ts);
+    const key = `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
+    if (!dayMap[key]) dayMap[key] = { year: dt.getFullYear(), min: d.value, max: d.value };
+    else {
+      if (d.value < dayMap[key].min) dayMap[key].min = d.value;
+      if (d.value > dayMap[key].max) dayMap[key].max = d.value;
+    }
+  });
+  const days = Object.values(dayMap);
+  const years = [...new Set(days.map(d => d.year))].sort((a,b) => a-b);
+  if (!days.length || !years.length) return;
+
+  renderFavoriteThresholdCard(container, days, years, {
+    kind: 'trop', chartKey: `fav_${prefix}_trop`, title: '🌴 Tropennächte – Nächte mit Tmin über Schwellwert',
+    sliderId: `favTropSlider_${prefix}`, valueId: `favTropVal_${prefix}`, compareToggleId: `favTropCompare_${prefix}`,
+    compareSliderId: `favTropCompareSlider_${prefix}`, compareValueId: `favTropCompareVal_${prefix}`, insightId: `favTropInsight_${prefix}`, chartId: `favTropChart_${prefix}`,
+    sliderLabel: 'Schwellwert (Tmin >):', color: '#bc8cff', compareColor: '#58a6ff', min: 12, max: 25, step: 0.5,
+    threshold: favTropThreshold, compareThreshold: favTropCompareThreshold, compareEnabled: favTropCompareEnabled,
+    formatLabel: t => `Tmin > ${t.toLocaleString('de-DE', {maximumFractionDigits:1})} °C`,
+    match: (d, t) => d.min > t, value: d => d.min,
+    setThreshold: t => { favTropThreshold = t; }, setCompareThreshold: t => { favTropCompareThreshold = t; }, setCompareEnabled: v => { favTropCompareEnabled = v; },
+    hint: 'Balken = aktiver Grenzwert. Gestrichelte Linie = Vergleichswert. Der Hinweis zeigt, welches Jahr beim aktuellen Wert und im Bereich zwischen beiden Reglern am stärksten heraussticht.',
+  });
+
+  renderFavoriteThresholdCard(container, days, years, {
+    kind: 'hot', chartKey: `fav_${prefix}_hot`, title: '☀️ Heiße Tage – Tage mit Tmax über Schwellwert',
+    sliderId: `favHotSlider_${prefix}`, valueId: `favHotVal_${prefix}`, compareToggleId: `favHotCompare_${prefix}`,
+    compareSliderId: `favHotCompareSlider_${prefix}`, compareValueId: `favHotCompareVal_${prefix}`, insightId: `favHotInsight_${prefix}`, chartId: `favHotChart_${prefix}`,
+    sliderLabel: 'Schwellwert (Tmax >):', color: '#f85149', compareColor: '#f0e442', min: 20, max: 38, step: 0.5,
+    threshold: favHotThreshold, compareThreshold: favHotCompareThreshold, compareEnabled: favHotCompareEnabled,
+    formatLabel: t => `Tmax > ${t.toLocaleString('de-DE', {maximumFractionDigits:1})} °C`,
+    match: (d, t) => d.max > t, value: d => d.max,
+    setThreshold: t => { favHotThreshold = t; }, setCompareThreshold: t => { favHotCompareThreshold = t; }, setCompareEnabled: v => { favHotCompareEnabled = v; },
+    hint: 'Balken = aktiver Grenzwert. Gestrichelte Linie = Vergleichswert. Der Bereich zwischen beiden Reglern zeigt, welches Jahr besonders viele Tage in genau dieser Temperaturzone hatte.',
+  });
+}
+
 /* ── Charts ── */
 function renderCharts(filtered) {
   const container = document.getElementById('chartsContainer');
@@ -834,6 +1003,11 @@ function renderCharts(filtered) {
     document.getElementById(canvasId).addEventListener('dblclick', () => {
       chartInstances[sensor]?.resetZoom();
     });
+
+    if (isTemperatureSensor(sensor, unit)) {
+      const rawForSensor = lastFilteredRaw.filter(d => d.sensor === sensor && selModules.has(d.module));
+      renderTemperatureFavorites(container, rawForSensor, sensor, unit, sensorIndex);
+    }
   });
 
   requestAnimationFrame(() => {
