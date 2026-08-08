@@ -384,13 +384,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   /* Main */
   .main { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:16px; }
 
-  /* Stats bar */
-  .stats-bar { display:flex; flex-wrap:wrap; gap:10px; }
-  .stat-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 16px; min-width:150px; flex:1; }
-  .stat-card .label { font-size:11px; color:var(--muted); margin-bottom:4px; }
-  .stat-card .val { font-size:20px; font-weight:700; color:var(--accent); }
-  .stat-card .detail { font-size:11px; color:var(--muted); margin-top:2px; }
-
   /* Charts */
   .chart-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
   .chart-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
@@ -563,7 +556,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button class="tab"        data-view="extremes" onclick="switchView(this)">⚡ Extreme</button>
       <button class="tab"        data-view="indoor"   onclick="switchView(this)">🏠 Innenraum</button>
     </div>
-    <div class="stats-bar" id="statsBar"></div>
     <div id="view-charts"   class="view"><div id="chartsContainer"></div></div>
     <div id="view-records"  class="view hidden"><div id="recordsContainer"></div></div>
     <div id="view-trends"   class="view hidden"><div id="trendsContainer"></div></div>
@@ -736,31 +728,6 @@ function setAggMode(mode) {
 function setAgg(btn) {
   if (!btn.dataset.mode) return;
   setAggMode(btn.dataset.mode);
-}
-
-/* ── Stats ── */
-function renderStats(filtered) {
-  const bar = document.getElementById('statsBar');
-  const bySensor = {};
-  filtered.forEach(d => {
-    if (!bySensor[d.sensor]) bySensor[d.sensor] = { min: Infinity, max: -Infinity, sum: 0, count: 0, unit: d.unit };
-    const stats = bySensor[d.sensor];
-    stats.min = Math.min(stats.min, d.value);
-    stats.max = Math.max(stats.max, d.value);
-    stats.sum += d.value;
-    stats.count += 1;
-  });
-  bar.innerHTML = '';
-  Object.entries(bySensor).forEach(([sensor, {min, max, sum, count, unit}]) => {
-    const avg = sum / count;
-    const card = document.createElement('div');
-    card.className = 'stat-card';
-    card.innerHTML = `
-      <div class="label">${sensor}</div>
-      <div class="val">${fmt(avg, unit)}</div>
-      <div class="detail">↓ ${fmt(min,unit)} &nbsp; ↑ ${fmt(max,unit)} &nbsp; n=${count.toLocaleString('de-DE')}</div>`;
-    bar.appendChild(card);
-  });
 }
 
 /* ── Charts ── */
@@ -3616,7 +3583,6 @@ function applyFilters(options = {}) {
 
   lastFilteredRaw = rawFiltered;
   lastFiltered = aggregateData(rawFiltered, aggMode);
-  renderStats(lastFiltered);
   if (!options.deferRender) renderCurrentView();
 
   document.getElementById('fileInfo').textContent =
