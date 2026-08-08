@@ -743,19 +743,22 @@ function renderStats(filtered) {
   const bar = document.getElementById('statsBar');
   const bySensor = {};
   filtered.forEach(d => {
-    if (!bySensor[d.sensor]) bySensor[d.sensor] = { vals:[], unit: d.unit };
-    bySensor[d.sensor].vals.push(d.value);
+    if (!bySensor[d.sensor]) bySensor[d.sensor] = { min: Infinity, max: -Infinity, sum: 0, count: 0, unit: d.unit };
+    const stats = bySensor[d.sensor];
+    stats.min = Math.min(stats.min, d.value);
+    stats.max = Math.max(stats.max, d.value);
+    stats.sum += d.value;
+    stats.count += 1;
   });
   bar.innerHTML = '';
-  Object.entries(bySensor).forEach(([sensor, {vals, unit}]) => {
-    const mn  = Math.min(...vals), mx = Math.max(...vals);
-    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+  Object.entries(bySensor).forEach(([sensor, {min, max, sum, count, unit}]) => {
+    const avg = sum / count;
     const card = document.createElement('div');
     card.className = 'stat-card';
     card.innerHTML = `
       <div class="label">${sensor}</div>
       <div class="val">${fmt(avg, unit)}</div>
-      <div class="detail">↓ ${fmt(mn,unit)} &nbsp; ↑ ${fmt(mx,unit)} &nbsp; n=${vals.length.toLocaleString('de-DE')}</div>`;
+      <div class="detail">↓ ${fmt(min,unit)} &nbsp; ↑ ${fmt(max,unit)} &nbsp; n=${count.toLocaleString('de-DE')}</div>`;
     bar.appendChild(card);
   });
 }
@@ -3599,7 +3602,7 @@ function renderCurrentView() {
   else if (currentView === 'indoor')   renderIndoor(lastFilteredRaw);
 }
 
-function applyFilters() {
+function applyFilters(options = {}) {
   const from = document.getElementById('dateFrom').value;
   const to   = document.getElementById('dateTo').value;
   const tsFrom = from ? new Date(from).getTime() : 0;
@@ -3614,7 +3617,7 @@ function applyFilters() {
   lastFilteredRaw = rawFiltered;
   lastFiltered = aggregateData(rawFiltered, aggMode);
   renderStats(lastFiltered);
-  renderCurrentView();
+  if (!options.deferRender) renderCurrentView();
 
   document.getElementById('fileInfo').textContent =
     `${lastFiltered.length.toLocaleString('de-DE')} Punkte (${aggMode}) · ${rawFiltered.length.toLocaleString('de-DE')} Roh · ${from} bis ${to}`;
@@ -3640,7 +3643,10 @@ window.addEventListener('load', () => {
   buildChips('sensorChips', PAYLOAD.sensors, selSensors);
   document.getElementById('fileInfo').textContent =
     `${FLAT.length.toLocaleString('de-DE')} Datenpunkte geladen · ${bounds.min} bis ${bounds.max}`;
-  applyFilters();
+  applyFilters({ deferRender: true });
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => renderCurrentView());
+  });
 });
 </script>
 </body>
