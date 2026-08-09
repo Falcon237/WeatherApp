@@ -1,0 +1,14 @@
+.vscode/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local logs and generated files
+*.log
+netatmo_download.log
+
+# Temporary local copies / work-in-progress files
+* copy*.py
+
+ghpages-index.html
+ghpages-index.txt
