@@ -4520,7 +4520,8 @@ class ViewerApp:
             self.root.after(0, lambda: self.status.set(
                 f'GitHub Pages: git push → {branch}…'))
 
-            _run(['git', 'add', 'docs/'])
+            # data.json nicht in git (zu groß); nur HTML und .nojekyll
+            _run(['git', 'add', 'docs/index.html', 'docs/.nojekyll'])
             diff = subprocess.run(
                 ['git', 'diff', '--cached', '--quiet'], cwd=repo_root)
             if diff.returncode != 0:
