@@ -4488,26 +4488,29 @@ class ViewerApp:
     def _auto_push_github(self, data: list) -> None:
         import subprocess
         repo_root = os.path.dirname(os.path.abspath(__file__))
-        docs_dir  = os.path.join(repo_root, 'docs')
+        docs_dir = os.path.join(repo_root, 'docs')
         os.makedirs(docs_dir, exist_ok=True)
 
-        self.root.after(0, lambda: self.status.set('GitHub Pages: exportiere HTML + data.json…'))
+        self.root.after(0, lambda: self.status.set(
+            'GitHub Pages: exportiere HTML + data.json…'))
         try:
             data_file = os.path.join(docs_dir, 'data.json')
             with open(data_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
 
             payload = prepare_chart_payload(data)
-            html    = generate_html(payload)
+            html = generate_html(payload)
             export_html(html)
 
             open(os.path.join(docs_dir, '.nojekyll'), 'a').close()
 
             today = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
-            self.root.after(0, lambda: self.status.set('GitHub Pages: git push…'))
+            self.root.after(0, lambda: self.status.set(
+                'GitHub Pages: git push…'))
 
             def run(cmd):
-                subprocess.run(cmd, cwd=repo_root, check=True, capture_output=True)
+                subprocess.run(cmd, cwd=repo_root, check=True,
+                               capture_output=True)
 
             run(['git', 'add', 'docs/'])
             # only commit when there are staged changes
