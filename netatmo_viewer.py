@@ -4487,8 +4487,18 @@ class ViewerApp:
 
     def _auto_push_github(self, data: list) -> None:
         import subprocess
+
+        def _run(cmd, **kw):
+            """Run git command, raise with stderr on failure."""
+            r = subprocess.run(cmd, cwd=repo_root,
+                               capture_output=True, text=True, **kw)
+            if r.returncode != 0:
+                detail = (r.stderr or r.stdout or '').strip()
+                raise RuntimeError(f"{' '.join(cmd)}\n{detail}")
+            return r
+
         repo_root = os.path.dirname(os.path.abspath(__file__))
-        docs_dir = os.path.join(repo_root, 'docs')
+        docs_dir  = os.path.join(repo_root, 'docs')
         os.makedirs(docs_dir, exist_ok=True)
 
         self.root.after(0, lambda: self.status.set(
@@ -4499,26 +4509,23 @@ class ViewerApp:
                 json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
 
             payload = prepare_chart_payload(data)
-            html = generate_html(payload)
+            html    = generate_html(payload)
             export_html(html)
-
             open(os.path.join(docs_dir, '.nojekyll'), 'a').close()
+
+            # Ermittle den aktuellen Branch (funktioniert mit main, master, gh-pages)
+            branch = _run(['git', 'branch', '--show-current']).stdout.strip()
 
             today = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
             self.root.after(0, lambda: self.status.set(
-                'GitHub Pages: git push…'))
+                f'GitHub Pages: git push → {branch}…'))
 
-            def run(cmd):
-                subprocess.run(cmd, cwd=repo_root, check=True,
-                               capture_output=True)
-
-            run(['git', 'add', 'docs/'])
-            # only commit when there are staged changes
+            _run(['git', 'add', 'docs/'])
             diff = subprocess.run(
                 ['git', 'diff', '--cached', '--quiet'], cwd=repo_root)
             if diff.returncode != 0:
-                run(['git', 'commit', '-m', f'auto: Netatmo Update {today}'])
-                run(['git', 'push'])
+                _run(['git', 'commit', '-m', f'auto: Netatmo Update {today}'])
+                _run(['git', 'push', 'origin', branch])
                 self.root.after(0, lambda t=today: self.status.set(
                     f'✅ GitHub Pages aktualisiert ({t}) – '
                     'live in ~1 Min.: https://falcon237.github.io/WeatherApp/'))
