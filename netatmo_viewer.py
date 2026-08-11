@@ -4071,6 +4071,11 @@ class ViewerApp:
             direct_frame, text='Netatmo direkt laden (Delta)',
             command=self._start_direct_import)
         self.btn_direct.grid(row=1, column=0, sticky='ew', pady=(8, 0))
+        self._autopush_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            direct_frame,
+            text='Nach Import automatisch → GitHub Pages aktualisieren (git push)',
+            variable=self._autopush_var).grid(row=2, column=0, sticky='w', pady=(6, 0))
 
         # ── Info ──
         info_frame = ttk.LabelFrame(
@@ -4474,6 +4479,53 @@ class ViewerApp:
             f'(+{added:,} neu, {dupes:,} Duplikate übersprungen). '
             f'Archiv: +{arch_added:,} neu / {arch_dupes:,} bekannt '
             f'({os.path.basename(archive_file)}).')
+        if self._autopush_var.get():
+            threading.Thread(
+                target=self._auto_push_github,
+                args=(list(self._data),),
+                daemon=True).start()
+
+    def _auto_push_github(self, data: list) -> None:
+        import subprocess
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        docs_dir  = os.path.join(repo_root, 'docs')
+        os.makedirs(docs_dir, exist_ok=True)
+
+        self.root.after(0, lambda: self.status.set('GitHub Pages: exportiere HTML + data.json…'))
+        try:
+            data_file = os.path.join(docs_dir, 'data.json')
+            with open(data_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+
+            payload = prepare_chart_payload(data)
+            html    = generate_html(payload)
+            export_html(html)
+
+            open(os.path.join(docs_dir, '.nojekyll'), 'a').close()
+
+            today = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+            self.root.after(0, lambda: self.status.set('GitHub Pages: git push…'))
+
+            def run(cmd):
+                subprocess.run(cmd, cwd=repo_root, check=True, capture_output=True)
+
+            run(['git', 'add', 'docs/'])
+            # only commit when there are staged changes
+            diff = subprocess.run(
+                ['git', 'diff', '--cached', '--quiet'], cwd=repo_root)
+            if diff.returncode != 0:
+                run(['git', 'commit', '-m', f'auto: Netatmo Update {today}'])
+                run(['git', 'push'])
+                self.root.after(0, lambda t=today: self.status.set(
+                    f'✅ GitHub Pages aktualisiert ({t}) – '
+                    'live in ~1 Min.: https://falcon237.github.io/WeatherApp/'))
+            else:
+                self.root.after(0, lambda: self.status.set(
+                    'GitHub Pages: keine Änderungen – kein Push nötig.'))
+        except Exception as exc:
+            err = str(exc)
+            self.root.after(0, lambda e=err: self.status.set(
+                f'❌ GitHub Push fehlgeschlagen: {e}'))
 
     def _refresh_info(self, cache_note: str = ''):
         if not self._data:
