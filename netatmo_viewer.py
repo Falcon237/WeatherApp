@@ -996,13 +996,23 @@ function renderDailyExtremes(container, raw, sensor, unit, prefix) {
       if (!md.length) return;
       const sfx   = modules.length > 1 ? ` (${mod})` : '';
 
-      // Shaded band: min first (no fill), max fills back to min
+      // Min/Max-Linien ohne Band-Füllung (Füllung übernehmen die Schwellwert-Flächen unten)
       ds.push({ label: `Tmin${sfx}`, data: md.map(d => ({ x: d.ts, y: Math.round(d.min*10)/10 })),
         borderColor: '#58a6ff', backgroundColor: 'transparent', borderWidth: 1.8,
         pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false, order: 4 });
       ds.push({ label: `Tmax${sfx}`, data: md.map(d => ({ x: d.ts, y: Math.round(d.max*10)/10 })),
-        borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.10)', borderWidth: 1.8,
-        pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: '-1', order: 4 });
+        borderColor: '#f85149', backgroundColor: 'transparent', borderWidth: 1.8,
+        pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false, order: 4 });
+
+      // Rote Fläche: Hitzetage – Bereich zwischen Tmax-Linie und 30°C, nur wo Tmax > 30°C
+      ds.push({ label: `Hitzefläche${sfx}`, data: md.map(d => ({ x: d.ts, y: Math.max(Math.round(d.max*10)/10, 30) })),
+        borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(248,81,73,0.45)',
+        fill: { value: 30 }, tension: 0.3, order: 10 });
+
+      // Rote Fläche: Tropennächte – Bereich zwischen Tmin-Linie und 20°C, nur wo Tmin > 20°C
+      ds.push({ label: `Tropenfläche${sfx}`, data: md.map(d => ({ x: d.ts, y: Math.max(Math.round(d.min*10)/10, 20) })),
+        borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(248,81,73,0.45)',
+        fill: { value: 20 }, tension: 0.3, order: 10 });
 
       // Tropical night markers on min line
       const tropPts = md.filter(d => d.min > 20).map(d => ({ x: d.ts, y: Math.round(d.min*10)/10 }));
@@ -1040,13 +1050,14 @@ function renderDailyExtremes(container, raw, sensor, unit, prefix) {
         },
         plugins: {
           legend: { labels: { color:'#e6edf3', boxWidth:12, padding:12,
-            // hide raw Tmin/Tmax lines from legend, keep marker layers
-            filter: it => !it.text.startsWith('Tmin') && !it.text.startsWith('Tmax') } },
+            // hide raw Tmin/Tmax lines + threshold fill helper datasets from legend, keep marker layers
+            filter: it => !/^(Tmin|Tmax|Hitzefläche|Tropenfläche)/.test(it.text) } },
           tooltip: {
             backgroundColor:'#161b22', borderColor:'#30363d', borderWidth:1,
             titleColor:'#e6edf3', bodyColor:'#8b949e',
             callbacks: { label: ctx => {
               const lbl = ctx.dataset.label || '';
+              if (/^(Hitzefläche|Tropenfläche)/.test(lbl)) return null;
               const v = ctx.parsed.y;
               if (v === undefined || v === null) return null;
               return ` ${lbl}: ${v.toLocaleString('de-DE',{maximumFractionDigits:1})} ${unit}`;
@@ -1166,17 +1177,17 @@ function renderTemperatureFavorites(container, raw, sensor, unit, prefix) {
   const dailyAgg = aggregateMinAvgMax(raw, 'daily');
   renderRecordRankingCard(container, dailyAgg, {
     chartKey: `rank_${prefix}_hot`, chartId: `rankHotChart_${prefix}`,
-    title: '🔥 Rekord-Rangliste – Höchstwerte', unit, topN: 20,
+    title: '🔥 Rekord-Rangliste – Höchstwerte', unit, topN: 50,
     color: '#f85149', otherColor: '#30363d', sortDesc: true,
     recordLabel: 'Höchstwert der Reihe', pickValue: r => r.max,
-    hint: 'Top 20 Tageshöchstwerte der gesamten Messreihe (nicht klimatologisch). Rot = aktuelles Jahr, grau = frühere Jahre.',
+    hint: 'Top 50 Tageshöchstwerte der gesamten Messreihe (nicht klimatologisch). Rot = aktuelles Jahr, grau = frühere Jahre.',
   });
   renderRecordRankingCard(container, dailyAgg, {
     chartKey: `rank_${prefix}_cold`, chartId: `rankColdChart_${prefix}`,
-    title: '🥶 Rekord-Rangliste – Tiefstwerte', unit, topN: 20,
+    title: '🥶 Rekord-Rangliste – Tiefstwerte', unit, topN: 50,
     color: '#58a6ff', otherColor: '#30363d', sortDesc: false,
     recordLabel: 'Tiefstwert der Reihe', pickValue: r => r.min,
-    hint: 'Top 20 Tagestiefstwerte der gesamten Messreihe (nicht klimatologisch). Blau = aktuelles Jahr, grau = frühere Jahre.',
+    hint: 'Top 50 Tagestiefstwerte der gesamten Messreihe (nicht klimatologisch). Blau = aktuelles Jahr, grau = frühere Jahre.',
   });
 }
 
