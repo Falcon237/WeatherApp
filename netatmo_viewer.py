@@ -702,13 +702,14 @@ function getDefaultSelection() {
   const temperatureSensors = PAYLOAD.sensors.filter(s => tempRe.test(s) || /°?\s*C/i.test(PAYLOAD.units[s] || ''));
   const hasPoints = (module, sensor) => !!(PAYLOAD.data[sensor]?.[module]?.length);
   const sensors = temperatureSensors.length ? temperatureSensors : PAYLOAD.sensors;
+  const moduleCandidates = PAYLOAD.modules.filter(m => sensors.some(s => hasPoints(m, s)));
   const outdoorModules = PAYLOAD.modules.filter(m => outdoorRe.test(m) && sensors.some(s => hasPoints(m, s)));
-  const fallbackModules = PAYLOAD.modules.filter(m => sensors.some(s => hasPoints(m, s)));
-  const modules = outdoorModules.length ? outdoorModules : fallbackModules.slice(0, 1);
+  const modules = outdoorModules.length ? outdoorModules : moduleCandidates;
   const selectedSensors = sensors.filter(s => modules.some(m => hasPoints(m, s)));
+  const selectedModules = modules.filter(m => selectedSensors.some(s => hasPoints(m, s)));
 
   return {
-    modules: new Set(modules.length ? modules : PAYLOAD.modules.slice(0, 1)),
+    modules: new Set(selectedModules.length ? selectedModules : PAYLOAD.modules.slice(0, 1)),
     sensors: new Set(selectedSensors.length ? selectedSensors : PAYLOAD.sensors.slice(0, 1)),
   };
 }
@@ -734,6 +735,7 @@ function buildChips(containerId, items, selSet, colorMap) {
     chip.onclick = () => {
       if (selSet.has(item)) { selSet.delete(item); chip.classList.add('off'); }
       else                  { selSet.add(item);    chip.classList.remove('off'); }
+      applyFilters();
     };
     el.appendChild(chip);
   });
@@ -4092,6 +4094,10 @@ class ViewerApp:
             action_frame, text='Im Browser öffnen  ➜', command=self._open,
             state=tk.DISABLED)
         self.btn_open.pack(side=tk.LEFT, padx=(0, 8))
+        self.btn_open_docs = ttk.Button(
+            action_frame, text='Im Browser (GitHub snapshot)',
+            command=self._open_docs_snapshot, state=tk.NORMAL)
+        self.btn_open_docs.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_export_pages = ttk.Button(
             action_frame, text='Für GitHub Pages exportieren',
             command=self._export_for_github_pages, state=tk.DISABLED)
@@ -4498,7 +4504,7 @@ class ViewerApp:
             return r
 
         repo_root = os.path.dirname(os.path.abspath(__file__))
-        docs_dir  = os.path.join(repo_root, 'docs')
+        docs_dir = os.path.join(repo_root, 'docs')
         os.makedirs(docs_dir, exist_ok=True)
 
         self.root.after(0, lambda: self.status.set(
@@ -4509,7 +4515,7 @@ class ViewerApp:
                 json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
 
             payload = prepare_chart_payload(data)
-            html    = generate_html(payload)
+            html = generate_html(payload)
             export_html(html)
             open(os.path.join(docs_dir, '.nojekyll'), 'a').close()
 
@@ -4578,6 +4584,22 @@ class ViewerApp:
             self.status.set(
                 f'Browser geöffnet. Temp-Datei: {os.path.basename(path)}')
         except (OSError, ValueError, KeyError) as e:
+            messagebox.showerror('Fehler', str(e))
+            self.status.set('Fehler beim Öffnen.')
+
+    def _open_docs_snapshot(self):
+        """Öffnet lokal vorhandenes docs/index.html (GitHub Pages Snapshot)."""
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        docs_index = os.path.join(repo_root, 'docs', 'index.html')
+        if not os.path.isfile(docs_index):
+            messagebox.showerror(
+                'Nicht gefunden', f'Datei nicht gefunden:\n{docs_index}')
+            return
+        try:
+            webbrowser.open(f'file:///{docs_index.replace(os.sep, "/")}')
+            self.status.set(
+                f'Browser geöffnet: {os.path.basename(docs_index)}')
+        except OSError as e:
             messagebox.showerror('Fehler', str(e))
             self.status.set('Fehler beim Öffnen.')
 
