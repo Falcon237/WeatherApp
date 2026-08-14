@@ -4,8 +4,12 @@ Netatmo Daten-Viewer
 Liest Netatmo Export-Dateien (Excel/CSV) und zeigt interaktive Charts im Browser.
 """
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+    _HAS_GUI = True
+except Exception:
+    _HAS_GUI = False
 import datetime
 import csv
 import os
@@ -398,6 +402,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .preset-row { display:flex; gap:4px; margin-bottom:6px; flex-wrap:wrap; }
   .preset-btn { flex:1; min-width:42px; padding:4px; background:#0d1117; border:1px solid var(--border); color:var(--muted); border-radius:6px; cursor:pointer; font-size:11px; }
   .preset-btn:hover { color:var(--accent); border-color:var(--accent); }
+  .preset-btn.active-range { color:var(--accent); border-color:var(--accent); background:#1c2a3a; font-weight:600; }
 
   /* Tabs */
   .tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:4px; }
@@ -697,13 +702,14 @@ function getDefaultSelection() {
   const temperatureSensors = PAYLOAD.sensors.filter(s => tempRe.test(s) || /°?\s*C/i.test(PAYLOAD.units[s] || ''));
   const hasPoints = (module, sensor) => !!(PAYLOAD.data[sensor]?.[module]?.length);
   const sensors = temperatureSensors.length ? temperatureSensors : PAYLOAD.sensors;
+  const moduleCandidates = PAYLOAD.modules.filter(m => sensors.some(s => hasPoints(m, s)));
   const outdoorModules = PAYLOAD.modules.filter(m => outdoorRe.test(m) && sensors.some(s => hasPoints(m, s)));
-  const fallbackModules = PAYLOAD.modules.filter(m => sensors.some(s => hasPoints(m, s)));
-  const modules = outdoorModules.length ? outdoorModules : fallbackModules.slice(0, 1);
+  const modules = outdoorModules.length ? outdoorModules : moduleCandidates;
   const selectedSensors = sensors.filter(s => modules.some(m => hasPoints(m, s)));
+  const selectedModules = modules.filter(m => selectedSensors.some(s => hasPoints(m, s)));
 
   return {
-    modules: new Set(modules.length ? modules : PAYLOAD.modules.slice(0, 1)),
+    modules: new Set(selectedModules.length ? selectedModules : PAYLOAD.modules.slice(0, 1)),
     sensors: new Set(selectedSensors.length ? selectedSensors : PAYLOAD.sensors.slice(0, 1)),
   };
 }
@@ -729,6 +735,7 @@ function buildChips(containerId, items, selSet, colorMap) {
     chip.onclick = () => {
       if (selSet.has(item)) { selSet.delete(item); chip.classList.add('off'); }
       else                  { selSet.add(item);    chip.classList.remove('off'); }
+      applyFilters();
     };
     el.appendChild(chip);
   });
@@ -856,6 +863,173 @@ function renderFavoriteThresholdCard(container, days, years, cfg) {
   compareSlider.addEventListener('input', updateChart);
   compareToggle.addEventListener('change', updateChart);
   updateInsights();
+}
+
+/* ── Tagesextrema-Chart (Min/Max + Tropennächte/Hitzetage) ── */
+function renderDailyExtremes(container, raw, sensor, unit, prefix) {
+  if (!isTemperatureSensor(sensor, unit) || !raw.length) return;
+
+  const modules = [...selModules].filter(m => raw.some(d => d.module === m));
+  if (!modules.length) return;
+
+  const allTs = raw.map(d => d.ts);
+  const dataMaxTs = Math.max(...allTs);
+  const dataMinTs = Math.min(...allTs);
+
+  const chartId  = `dexChart_${prefix}`;
+  const rangeId  = `dexRange_${prefix}`;
+  let extrChart  = null;
+  let curDays    = 30;
+
+  // Build daily {ts, module, min, max} from raw, filtered by tsFrom
+  function buildDaily(tsFrom) {
+    const map = {};
+    raw.forEach(d => {
+      if (!selModules.has(d.module) || d.ts < tsFrom) return;
+      const dt  = new Date(d.ts);
+      const key = `${d.module}|${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`;
+      const bkt = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+      if (!map[key]) map[key] = { ts: bkt, module: d.module, min: d.value, max: d.value };
+      else { if (d.value < map[key].min) map[key].min = d.value; if (d.value > map[key].max) map[key].max = d.value; }
+    });
+    return Object.values(map).sort((a, b) => a.ts - b.ts);
+  }
+
+  function buildDatasets(days) {
+    const tsFrom = days === 0 ? dataMinTs : dataMaxTs - days * 86400000;
+    const daily  = buildDaily(tsFrom);
+    const ds     = [];
+    modules.forEach(mod => {
+      const color = PAYLOAD.colors[mod] || '#58a6ff';
+      const md    = daily.filter(d => d.module === mod);
+      if (!md.length) return;
+      const sfx   = modules.length > 1 ? ` (${mod})` : '';
+
+      // Shaded band: min first (no fill), max fills back to min
+      ds.push({ label: `Tmin${sfx}`, data: md.map(d => ({ x: d.ts, y: Math.round(d.min*10)/10 })),
+        borderColor: '#58a6ff', backgroundColor: 'transparent', borderWidth: 1.8,
+        pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false, order: 4 });
+      ds.push({ label: `Tmax${sfx}`, data: md.map(d => ({ x: d.ts, y: Math.round(d.max*10)/10 })),
+        borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.10)', borderWidth: 1.8,
+        pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: '-1', order: 4 });
+
+      // Tropical night markers on min line
+      const tropPts = md.filter(d => d.min > 20).map(d => ({ x: d.ts, y: Math.round(d.min*10)/10 }));
+      if (tropPts.length) ds.push({
+        label: `🌴 Tropennacht Tmin>20°C${sfx}`, data: tropPts, type: 'scatter',
+        backgroundColor: '#bc8cff', borderColor: '#fff', borderWidth: 1.2,
+        pointRadius: 6, pointHoverRadius: 8, showLine: false, order: 1 });
+
+      // Heat day markers on max line
+      const heatPts = md.filter(d => d.max > 30).map(d => ({ x: d.ts, y: Math.round(d.max*10)/10 }));
+      if (heatPts.length) ds.push({
+        label: `☀️ Hitzetag Tmax>30°C${sfx}`, data: heatPts, type: 'scatter',
+        backgroundColor: '#f59e0b', borderColor: '#fff', borderWidth: 1.2,
+        pointRadius: 6, pointHoverRadius: 8, showLine: false, order: 1 });
+    });
+    return ds;
+  }
+
+  function buildOrUpdate(days) {
+    const datasets = buildDatasets(days);
+    if (extrChart) { extrChart.data.datasets = datasets; extrChart.update('none'); return; }
+    const ctx = document.getElementById(chartId).getContext('2d');
+    extrChart = new Chart(ctx, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, parsing: false, normalized: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { type: 'time',
+               time: { tooltipFormat: 'dd.MM.yyyy', displayFormats: { day:'dd.MM', week:'dd.MM.yy', month:'MMM yy' } },
+               grid: { color:'#30363d' }, ticks: { color:'#8b949e', maxTicksLimit:10 } },
+          y: { grid: { color:'#30363d' },
+               ticks: { color:'#8b949e', callback: v => v.toLocaleString('de-DE',{maximumFractionDigits:1}) + (unit?' '+unit:'') } },
+        },
+        plugins: {
+          legend: { labels: { color:'#e6edf3', boxWidth:12, padding:12,
+            // hide raw Tmin/Tmax lines from legend, keep marker layers
+            filter: it => !it.text.startsWith('Tmin') && !it.text.startsWith('Tmax') } },
+          tooltip: {
+            backgroundColor:'#161b22', borderColor:'#30363d', borderWidth:1,
+            titleColor:'#e6edf3', bodyColor:'#8b949e',
+            callbacks: { label: ctx => {
+              const lbl = ctx.dataset.label || '';
+              const v = ctx.parsed.y;
+              if (v === undefined || v === null) return null;
+              return ` ${lbl}: ${v.toLocaleString('de-DE',{maximumFractionDigits:1})} ${unit}`;
+            }},
+          },
+          zoom: { zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}, pan:{enabled:true,mode:'x'} },
+        },
+      },
+    });
+    document.getElementById(chartId).addEventListener('dblclick', () => extrChart?.resetZoom());
+  }
+
+  // Build info pills (counts)
+  function buildPills(days) {
+    const tsFrom = days === 0 ? dataMinTs : dataMaxTs - days * 86400000;
+    const daily  = buildDaily(tsFrom);
+    const trop   = daily.filter(d => d.min > 20).length;
+    const heat   = daily.filter(d => d.max > 30).length;
+    const frost  = daily.filter(d => d.min < 0).length;
+    const parts  = [];
+    if (heat)  parts.push(`<span class="insight-pill hot"><b>${heat}</b> Hitzetag${heat!==1?'e':''} (Tmax&gt;30°C)</span>`);
+    if (trop)  parts.push(`<span class="insight-pill trop"><b>${trop}</b> Tropennacht${trop!==1?'e':''} (Tmin&gt;20°C)</span>`);
+    if (frost) parts.push(`<span class="insight-pill"><b>${frost}</b> Frosttag${frost!==1?'e':''} (Tmin&lt;0°C)</span>`);
+    const el = document.getElementById(`dexPills_${prefix}`);
+    if (el) el.innerHTML = parts.join('') || '<span class="insight-pill">Keine Extremtage im gewählten Zeitraum</span>';
+  }
+
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  card.innerHTML = `
+    <div class="chart-header">
+      <h2>🌡️ Tagesextrema – Min / Max</h2>
+      <span class="unit-badge">${unit}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+      <span style="color:var(--muted);font-size:12px;">Zeitraum:</span>
+      <div style="display:flex;gap:4px;" id="${rangeId}">
+        <button class="preset-btn" data-days="7">7T</button>
+        <button class="preset-btn" data-days="14">14T</button>
+        <button class="preset-btn active-range" data-days="30">30T</button>
+        <button class="preset-btn" data-days="60">60T</button>
+        <button class="preset-btn" data-days="90">90T</button>
+        <button class="preset-btn" data-days="365">1J</button>
+        <button class="preset-btn" data-days="0">Alles</button>
+      </div>
+      <span style="color:var(--muted);font-size:11px;margin-left:4px;">
+        <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#f59e0b;margin-right:3px;"></span>Hitzetag &gt;30°C
+        &nbsp;
+        <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#bc8cff;margin-right:3px;"></span>Tropennacht &gt;20°C
+        &nbsp;
+        <span style="display:inline-block;width:26px;height:3px;background:#f85149;margin-right:3px;vertical-align:middle;"></span>Tmax
+        &nbsp;
+        <span style="display:inline-block;width:26px;height:3px;background:#58a6ff;margin-right:3px;vertical-align:middle;"></span>Tmin
+      </span>
+    </div>
+    <div class="insight-pills" id="dexPills_${prefix}"></div>
+    <div class="chart-wrap tall"><canvas id="${chartId}"></canvas></div>
+    <div class="chart-hint">Scrollen zum Zoomen · Ziehen zum Verschieben · Doppelklick zum Zurücksetzen</div>`;
+  container.appendChild(card);
+
+  document.getElementById(rangeId).addEventListener('click', e => {
+    const btn = e.target.closest('.preset-btn');
+    if (!btn) return;
+    curDays = +btn.dataset.days;
+    document.querySelectorAll(`#${rangeId} .preset-btn`).forEach(b =>
+      b.classList.toggle('active-range', b === btn));
+    buildOrUpdate(curDays);
+    buildPills(curDays);
+  });
+
+  buildOrUpdate(curDays);
+  buildPills(curDays);
+  // Register destroy handle so main chart cleanup works
+  chartInstances[`dex_${prefix}`] = { destroy() { if (extrChart) { extrChart.destroy(); extrChart = null; } }, canvas: null };
 }
 
 function renderTemperatureFavorites(container, raw, sensor, unit, prefix) {
@@ -1006,6 +1180,7 @@ function renderCharts(filtered) {
 
     if (isTemperatureSensor(sensor, unit)) {
       const rawForSensor = lastFilteredRaw.filter(d => d.sensor === sensor && selModules.has(d.module));
+      renderDailyExtremes(container, rawForSensor, sensor, unit, sensorIndex);
       renderTemperatureFavorites(container, rawForSensor, sensor, unit, sensorIndex);
     }
   });
@@ -3898,6 +4073,11 @@ class ViewerApp:
             direct_frame, text='Netatmo direkt laden (Delta)',
             command=self._start_direct_import)
         self.btn_direct.grid(row=1, column=0, sticky='ew', pady=(8, 0))
+        self._autopush_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            direct_frame,
+            text='Nach Import automatisch → GitHub Pages aktualisieren (git push)',
+            variable=self._autopush_var).grid(row=2, column=0, sticky='w', pady=(6, 0))
 
         # ── Info ──
         info_frame = ttk.LabelFrame(
@@ -3914,6 +4094,10 @@ class ViewerApp:
             action_frame, text='Im Browser öffnen  ➜', command=self._open,
             state=tk.DISABLED)
         self.btn_open.pack(side=tk.LEFT, padx=(0, 8))
+        self.btn_open_docs = ttk.Button(
+            action_frame, text='Im Browser (GitHub snapshot)',
+            command=self._open_docs_snapshot, state=tk.NORMAL)
+        self.btn_open_docs.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_export_pages = ttk.Button(
             action_frame, text='Für GitHub Pages exportieren',
             command=self._export_for_github_pages, state=tk.DISABLED)
@@ -4250,7 +4434,7 @@ class ViewerApp:
             self.root.after(0, lambda: self._finish_direct_import(
                 data,
                 f'Netatmo API {start_date:%Y-%m-%d} bis {end_date:%Y-%m-%d}'))
-        except (ImportError, KeyError, OSError, RuntimeError, TypeError, ValueError) as e:
+        except (AttributeError, ImportError, KeyError, OSError, RuntimeError, TypeError, ValueError) as e:
             self.root.after(0, lambda err=e: self._finish_direct_import(
                 None, f'Unerwarteter Fehler: {err}'))
 
@@ -4301,6 +4485,64 @@ class ViewerApp:
             f'(+{added:,} neu, {dupes:,} Duplikate übersprungen). '
             f'Archiv: +{arch_added:,} neu / {arch_dupes:,} bekannt '
             f'({os.path.basename(archive_file)}).')
+        if self._autopush_var.get():
+            threading.Thread(
+                target=self._auto_push_github,
+                args=(list(self._data),),
+                daemon=True).start()
+
+    def _auto_push_github(self, data: list) -> None:
+        import subprocess
+
+        def _run(cmd, **kw):
+            """Run git command, raise with stderr on failure."""
+            r = subprocess.run(cmd, cwd=repo_root,
+                               capture_output=True, text=True, **kw)
+            if r.returncode != 0:
+                detail = (r.stderr or r.stdout or '').strip()
+                raise RuntimeError(f"{' '.join(cmd)}\n{detail}")
+            return r
+
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        docs_dir = os.path.join(repo_root, 'docs')
+        os.makedirs(docs_dir, exist_ok=True)
+
+        self.root.after(0, lambda: self.status.set(
+            'GitHub Pages: exportiere HTML + data.json…'))
+        try:
+            data_file = os.path.join(docs_dir, 'data.json')
+            with open(data_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+
+            payload = prepare_chart_payload(data)
+            html = generate_html(payload)
+            export_html(html)
+            open(os.path.join(docs_dir, '.nojekyll'), 'a').close()
+
+            # Ermittle den aktuellen Branch (funktioniert mit main, master, gh-pages)
+            branch = _run(['git', 'branch', '--show-current']).stdout.strip()
+
+            today = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+            self.root.after(0, lambda: self.status.set(
+                f'GitHub Pages: git push → {branch}…'))
+
+            # data.json nicht in git (zu groß); nur HTML und .nojekyll
+            _run(['git', 'add', 'docs/index.html', 'docs/.nojekyll'])
+            diff = subprocess.run(
+                ['git', 'diff', '--cached', '--quiet'], cwd=repo_root)
+            if diff.returncode != 0:
+                _run(['git', 'commit', '-m', f'auto: Netatmo Update {today}'])
+                _run(['git', 'push', 'origin', branch])
+                self.root.after(0, lambda t=today: self.status.set(
+                    f'✅ GitHub Pages aktualisiert ({t}) – '
+                    'live in ~1 Min.: https://falcon237.github.io/WeatherApp/'))
+            else:
+                self.root.after(0, lambda: self.status.set(
+                    'GitHub Pages: keine Änderungen – kein Push nötig.'))
+        except Exception as exc:
+            err = str(exc)
+            self.root.after(0, lambda e=err: self.status.set(
+                f'❌ GitHub Push fehlgeschlagen: {e}'))
 
     def _refresh_info(self, cache_note: str = ''):
         if not self._data:
@@ -4342,6 +4584,22 @@ class ViewerApp:
             self.status.set(
                 f'Browser geöffnet. Temp-Datei: {os.path.basename(path)}')
         except (OSError, ValueError, KeyError) as e:
+            messagebox.showerror('Fehler', str(e))
+            self.status.set('Fehler beim Öffnen.')
+
+    def _open_docs_snapshot(self):
+        """Öffnet lokal vorhandenes docs/index.html (GitHub Pages Snapshot)."""
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        docs_index = os.path.join(repo_root, 'docs', 'index.html')
+        if not os.path.isfile(docs_index):
+            messagebox.showerror(
+                'Nicht gefunden', f'Datei nicht gefunden:\n{docs_index}')
+            return
+        try:
+            webbrowser.open(f'file:///{docs_index.replace(os.sep, "/")}')
+            self.status.set(
+                f'Browser geöffnet: {os.path.basename(docs_index)}')
+        except OSError as e:
             messagebox.showerror('Fehler', str(e))
             self.status.set('Fehler beim Öffnen.')
 

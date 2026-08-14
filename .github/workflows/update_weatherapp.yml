@@ -1,0 +1,70 @@
+name: WeatherApp aktualisieren
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # täglich 05:00 UTC
+  workflow_dispatch:       # manuell auslösbar
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # für git push
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: docs/data.json aus Cache wiederherstellen (Delta-Fetch statt Vollabruf)
+        uses: actions/cache/restore@v4
+        with:
+          path: docs/data.json
+          key: netatmo-data-${{ github.run_id }}
+          restore-keys: |
+            netatmo-data-
+
+      - name: Netatmo-Daten laden und HTML exportieren
+        id: fetch
+        env:
+          NETATMO_CLIENT_ID: ${{ secrets.NETATMO_CLIENT_ID }}
+          NETATMO_CLIENT_SECRET: ${{ secrets.NETATMO_CLIENT_SECRET }}
+          NETATMO_REFRESH_TOKEN: ${{ secrets.NETATMO_REFRESH_TOKEN }}
+        run: |
+          # Skript ausführen; letzte Zeile enthält NEW_REFRESH_TOKEN=<wert>
+          python fetch_and_export.py | tee /tmp/fetch_output.txt
+          NEW_TOKEN=$(grep '^NEW_REFRESH_TOKEN=' /tmp/fetch_output.txt | cut -d= -f2-)
+          echo "new_refresh_token=${NEW_TOKEN}" >> "$GITHUB_OUTPUT"
+
+      - name: Refresh-Token im Secret rotieren
+        if: steps.fetch.outputs.new_refresh_token != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          echo "${{ steps.fetch.outputs.new_refresh_token }}" \
+            | gh secret set NETATMO_REFRESH_TOKEN \
+                --repo "${{ github.repository }}"
+
+      - name: docs/data.json in Cache sichern
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: docs/data.json
+          key: netatmo-data-${{ github.run_id }}
+
+      - name: Änderungen committen und pushen
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          # docs/data.json ist absichtlich in .gitignore (>100MB, GitHub-Limit)
+          git add docs/index.html docs/.nojekyll
+          if git diff --cached --quiet; then
+            echo "Keine neuen Daten – kein Commit nötig."
+          else
+            git commit -m "auto: WeatherApp $(date -u +%Y-%m-%d)"
+            git push
+          fi

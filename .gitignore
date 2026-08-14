@@ -1,12 +1,10 @@
+.vscode/
 __pycache__/
 *.py[cod]
-* copy*.py
+*$py.class
 
 .env
 .env.*
-
-*.log
-netatmo_download.log
 
 *.sqlite
 *.sqlite-*
@@ -14,4 +12,13 @@ netatmo_download.log
 *.pkl
 *.pkl.gz
 
-.vscode/
+# Local logs and generated files
+*.log
+netatmo_download.log
+
+# Temporary local copies / work-in-progress files
+* copy*.py
+
+ghpages-index.html
+ghpages-index.txt
+docs/data.json
