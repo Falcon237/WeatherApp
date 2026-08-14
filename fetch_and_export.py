@@ -229,9 +229,8 @@ def generate_html(payload: dict) -> str:
 
     # Template zwischen HTML_TEMPLATE = r"""...""" extrahieren
     start_marker = 'HTML_TEMPLATE = r"""'
-    end_marker = '"""\n\ndef generate_html'
     s = source.find(start_marker)
-    e = source.find(end_marker)
+    e = source.find('"""', s + len(start_marker))
     if s == -1 or e == -1:
         raise RuntimeError(
             'HTML_TEMPLATE in netatmo_viewer.py nicht gefunden.')

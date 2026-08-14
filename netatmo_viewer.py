@@ -354,6 +354,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
   :root {
     --bg: #0d1117; --card: #161b22; --border: #30363d;
@@ -479,6 +480,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .insight-pill.hot b { color:var(--red); }
   .insight-pill.trop b { color:#bc8cff; }
 
+  /* Rekord-Rangliste */
+  .rank-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px,1fr)); gap:10px; margin-bottom:12px; }
+  .rank-stat { background:#0d1117; border:1px solid var(--border); border-radius:10px; padding:10px 14px; }
+  .rank-stat .label { font-size:11px; color:var(--muted); margin-bottom:4px; }
+  .rank-stat .value { font-size:22px; font-weight:700; color:var(--text); }
+  .rank-stat .value .unit { font-size:13px; font-weight:500; color:var(--muted); margin-left:2px; }
+  .rank-legend { display:flex; flex-wrap:wrap; gap:16px; margin-bottom:10px; font-size:12px; color:var(--muted); }
+  .rank-legend .swatch { width:10px; height:10px; border-radius:3px; display:inline-block; margin-right:5px; vertical-align:middle; }
+  .rank-year-badges { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+  .rank-year-badge { background:#0d1117; border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:11px; color:var(--muted); text-align:center; min-width:44px; }
+  .rank-year-badge .y { font-weight:600; color:var(--text); display:block; }
+  .rank-year-badge.current { border-color:var(--red); background:#2a1512; }
+  .rank-year-badge.current .y { color:var(--red); }
+
   /* ── Indoor Komfort-Cockpit ── */
   .cockpit-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:12px; margin-bottom:16px; }
   .cockpit-card { background:var(--card); border:2px solid var(--border); border-radius:12px; padding:14px 12px; text-align:center; position:relative; overflow:hidden; transition:.2s; }
@@ -595,6 +610,9 @@ let favHotCompareThreshold = 25;
 let favHotCompareEnabled = true;
 
 /* ── Helpers ── */
+// Math.max/min(...array) blows the call-stack for very large arrays (raw multi-year data).
+function arrMax(arr) { let m = -Infinity; for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i]; return m; }
+function arrMin(arr) { let m = Infinity; for (let i = 0; i < arr.length; i++) if (arr[i] < m) m = arr[i]; return m; }
 function fmt(n, unit) {
   if (n === undefined || n === null) return '–';
   return n.toLocaleString('de-DE', {maximumFractionDigits:1}) + (unit ? ' ' + unit : '');
@@ -667,7 +685,7 @@ function aggregateMinAvgMax(data, mode) {
     const sum = vs.reduce((a,b)=>a+b,0);
     return {
       ts: g.ts, module: g.module, sensor: g.sensor, unit: g.unit,
-      min: Math.min(...vs), max: Math.max(...vs),
+      min: arrMin(vs), max: arrMax(vs),
       avg: Math.round(sum/vs.length*100)/100, n: vs.length
     };
   }).sort((a,b)=>a.ts-b.ts);
@@ -865,6 +883,79 @@ function renderFavoriteThresholdCard(container, days, years, cfg) {
   updateInsights();
 }
 
+/* ── Rekord-Rangliste (Top-N Tage, Balken nach Jahr eingefärbt) ── */
+function renderRecordRankingCard(container, daily, cfg) {
+  const yearOf = r => new Date(r.ts).getFullYear();
+  const ranked = daily
+    .map(r => ({ ts: r.ts, module: r.module, v: cfg.pickValue(r) }))
+    .sort((a, b) => cfg.sortDesc ? b.v - a.v : a.v - b.v)
+    .slice(0, cfg.topN);
+  if (!ranked.length) return;
+
+  const currentYear = Math.max(...daily.map(yearOf));
+  const top10 = ranked.slice(0, 10);
+  const placesCurrent = ranked.filter(r => yearOf(r) === currentYear).length;
+  const top10Current = top10.filter(r => yearOf(r) === currentYear).length;
+  const yearCounts = {};
+  ranked.forEach(r => { const y = yearOf(r); yearCounts[y] = (yearCounts[y] || 0) + 1; });
+  const sortedYears = Object.keys(yearCounts).map(Number).sort((a, b) => a - b);
+  const otherYears = sortedYears.filter(y => y !== currentYear);
+  const fmtNum = n => n.toLocaleString('de-DE', {maximumFractionDigits:1});
+
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  card.innerHTML = `
+    <div class="chart-header"><h2>${cfg.title}</h2><span class="unit-badge">${cfg.unit}</span></div>
+    <div class="rank-stats">
+      <div class="rank-stat"><div class="label">Plätze von ${currentYear}</div><div class="value">${placesCurrent}<span class="unit">/${ranked.length}</span></div></div>
+      <div class="rank-stat"><div class="label">${cfg.recordLabel}</div><div class="value">${fmtNum(ranked[0].v)}<span class="unit">${cfg.unit}</span></div></div>
+      <div class="rank-stat"><div class="label">Top 10</div><div class="value">${top10Current}<span class="unit">/10</span></div></div>
+      <div class="rank-stat"><div class="label">Jahre in der Liste</div><div class="value">${sortedYears.length}</div></div>
+    </div>
+    <div class="rank-legend">
+      <span><span class="swatch" style="background:${cfg.color}"></span>${currentYear} — ${placesCurrent} Einträge</span>
+      ${otherYears.length ? `<span><span class="swatch" style="background:${cfg.otherColor}"></span>${otherYears.join(', ')} — ${ranked.length - placesCurrent} Einträge</span>` : ''}
+    </div>
+    <div class="chart-wrap tall"><canvas id="${cfg.chartId}"></canvas></div>
+    <div class="rank-year-badges">
+      ${sortedYears.map(y => `<div class="rank-year-badge${y === currentYear ? ' current' : ''}"><span class="y">${y}</span>${yearCounts[y]}</div>`).join('')}
+    </div>
+    <div class="chart-hint">${cfg.hint}</div>`;
+  container.appendChild(card);
+
+  const labels = ranked.map(r => fmtDate(r.ts));
+  const values = ranked.map(r => r.v);
+  const colors = ranked.map(r => yearOf(r) === currentYear ? cfg.color : cfg.otherColor);
+  const axisMin = Math.floor(Math.min(...values) / 5) * 5;
+
+  const chart = new Chart(document.getElementById(cfg.chartId).getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 3, barThickness: 14 }] },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { min: axisMin, grid: { color: '#30363d' }, ticks: { color: '#8b949e', callback: v => v + (cfg.unit ? ' ' + cfg.unit : '') } },
+        y: { grid: { display: false }, ticks: { color: '#8b949e' } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+          titleColor: '#e6edf3', bodyColor: '#8b949e',
+          callbacks: { label: ctx => ` ${fmt(ctx.parsed.x, cfg.unit)}` },
+        },
+        datalabels: {
+          anchor: 'end', align: 'right', color: '#e6edf3', font: { size: 10, weight: '600' },
+          formatter: v => fmtNum(v) + ' ' + cfg.unit,
+        },
+      },
+    },
+    plugins: [ChartDataLabels],
+  });
+  chartInstances[cfg.chartKey] = chart;
+}
+
 /* ── Tagesextrema-Chart (Min/Max + Tropennächte/Hitzetage) ── */
 function renderDailyExtremes(container, raw, sensor, unit, prefix) {
   if (!isTemperatureSensor(sensor, unit) || !raw.length) return;
@@ -873,8 +964,8 @@ function renderDailyExtremes(container, raw, sensor, unit, prefix) {
   if (!modules.length) return;
 
   const allTs = raw.map(d => d.ts);
-  const dataMaxTs = Math.max(...allTs);
-  const dataMinTs = Math.min(...allTs);
+  const dataMaxTs = arrMax(allTs);
+  const dataMinTs = arrMin(allTs);
 
   const chartId  = `dexChart_${prefix}`;
   const rangeId  = `dexRange_${prefix}`;
@@ -1070,6 +1161,22 @@ function renderTemperatureFavorites(container, raw, sensor, unit, prefix) {
     match: (d, t) => d.max > t, value: d => d.max,
     setThreshold: t => { favHotThreshold = t; }, setCompareThreshold: t => { favHotCompareThreshold = t; }, setCompareEnabled: v => { favHotCompareEnabled = v; },
     hint: 'Balken = aktiver Grenzwert. Gestrichelte Linie = Vergleichswert. Der Bereich zwischen beiden Reglern zeigt, welches Jahr besonders viele Tage in genau dieser Temperaturzone hatte.',
+  });
+
+  const dailyAgg = aggregateMinAvgMax(raw, 'daily');
+  renderRecordRankingCard(container, dailyAgg, {
+    chartKey: `rank_${prefix}_hot`, chartId: `rankHotChart_${prefix}`,
+    title: '🔥 Rekord-Rangliste – Höchstwerte', unit, topN: 20,
+    color: '#f85149', otherColor: '#30363d', sortDesc: true,
+    recordLabel: 'Höchstwert der Reihe', pickValue: r => r.max,
+    hint: 'Top 20 Tageshöchstwerte der gesamten Messreihe (nicht klimatologisch). Rot = aktuelles Jahr, grau = frühere Jahre.',
+  });
+  renderRecordRankingCard(container, dailyAgg, {
+    chartKey: `rank_${prefix}_cold`, chartId: `rankColdChart_${prefix}`,
+    title: '🥶 Rekord-Rangliste – Tiefstwerte', unit, topN: 20,
+    color: '#58a6ff', otherColor: '#30363d', sortDesc: false,
+    recordLabel: 'Tiefstwert der Reihe', pickValue: r => r.min,
+    hint: 'Top 20 Tagestiefstwerte der gesamten Messreihe (nicht klimatologisch). Blau = aktuelles Jahr, grau = frühere Jahre.',
   });
 }
 
