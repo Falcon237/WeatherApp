@@ -22,6 +22,8 @@ import threading
 import webbrowser
 from collections import defaultdict
 
+import password_lock
+
 try:
     from openpyxl import load_workbook
     OPENPYXL_AVAILABLE = True
@@ -336,8 +338,20 @@ def prepare_chart_payload(data):
             if pts:
                 chart_data[sensor][module] = pts
 
-    return {'sensors': sensors, 'modules': modules,
-            'units': units, 'colors': colors, 'data': chart_data}
+    payload = {'sensors': sensors, 'modules': modules,
+               'units': units, 'colors': colors, 'data': chart_data}
+
+    public_data, locked_data, locked_modules = password_lock.split_locked_modules(
+        chart_data, modules)
+    if locked_modules:
+        password = password_lock.get_viewer_password()
+        payload['data'] = public_data
+        payload['locked_modules'] = locked_modules
+        if password and locked_data:
+            payload['locked_enc'] = password_lock.encrypt_json(
+                locked_data, password)
+
+    return payload
 
 
 # ─────────────────────────────────────────────
@@ -494,6 +508,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .rank-year-badge.current { border-color:var(--red); background:#2a1512; }
   .rank-year-badge.current .y { color:var(--red); }
 
+  /* Innenraum-Passwortsperre */
+  .lock-panel { background:#0d1117; border:1px solid var(--border); border-radius:8px; padding:10px; margin:8px 0 12px; }
+  .lock-row { display:flex; gap:6px; }
+  .lock-row input[type=password] { flex:1; min-width:0; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:6px 8px; font-size:12px; }
+  .lock-btn { background:var(--accent); border:none; color:#fff; border-radius:6px; padding:6px 10px; font-size:12px; cursor:pointer; white-space:nowrap; }
+  .lock-btn:hover { opacity:.85; }
+  .lock-msg { font-size:11px; color:var(--muted); margin-top:6px; }
+  .lock-msg.ok  { color:var(--green); }
+  .lock-msg.err { color:var(--red); }
+
   /* ── Indoor Komfort-Cockpit ── */
   .cockpit-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:12px; margin-bottom:16px; }
   .cockpit-card { background:var(--card); border:2px solid var(--border); border-radius:12px; padding:14px 12px; text-align:center; position:relative; overflow:hidden; transition:.2s; }
@@ -553,6 +577,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     <h3>Module</h3>
     <div class="chips" id="moduleChips"></div>
+    <div class="lock-panel" id="indoorLockPanel" style="display:none;">
+      <div class="lock-row">
+        <input type="password" id="indoorPwInput" placeholder="Passwort Innenraum" onkeydown="if(event.key==='Enter')unlockIndoor()">
+        <button class="lock-btn" onclick="unlockIndoor()">🔒 Entsperren</button>
+      </div>
+      <div class="lock-msg" id="indoorLockMsg">Innenraum-Module (Schlafzimmer/Wohnzimmer/Zimmer) sind passwortgeschützt.</div>
+    </div>
 
     <h3>Sensoren</h3>
     <div class="chips" id="sensorChips"></div>
@@ -705,7 +736,87 @@ function buildFlat() {
   }
   return flat;
 }
-const FLAT = buildFlat();
+let FLAT = buildFlat();
+
+/* ── Innenraum-Entschlüsselung (Passwort → PBKDF2 → HMAC-Keystream) ── */
+function b64ToBytes(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
+
+function bytesEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+async function deriveLockKey(password, saltB64, iterations) {
+  const enc = new TextEncoder();
+  const salt = b64ToBytes(saltB64);
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, baseKey, 256);
+  return new Uint8Array(bits);
+}
+
+async function hmacRaw(keyBytes, msgBytes) {
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, msgBytes));
+}
+
+async function hmacKeystream(keyBytes, nonceBytes, length) {
+  const out = new Uint8Array(length);
+  let offset = 0, counter = 0;
+  while (offset < length) {
+    const counterBytes = new Uint8Array(4);
+    new DataView(counterBytes.buffer).setUint32(0, counter, false);
+    const input = new Uint8Array(nonceBytes.length + 4);
+    input.set(nonceBytes, 0);
+    input.set(counterBytes, nonceBytes.length);
+    const block = await hmacRaw(keyBytes, input);
+    out.set(block.subarray(0, Math.min(block.length, length - offset)), offset);
+    offset += block.length;
+    counter += 1;
+  }
+  return out;
+}
+
+async function unlockIndoor() {
+  const enc = PAYLOAD.locked_enc;
+  const msgEl = document.getElementById('indoorLockMsg');
+  const pwInput = document.getElementById('indoorPwInput');
+  const pw = pwInput.value;
+  if (!enc || !pw) return;
+  msgEl.className = 'lock-msg';
+  msgEl.textContent = 'Prüfe Passwort…';
+  try {
+    const key = await deriveLockKey(pw, enc.salt, enc.iterations);
+    const nonce = b64ToBytes(enc.nonce);
+    const ciphertext = b64ToBytes(enc.ciphertext);
+    const macMsg = new Uint8Array(nonce.length + ciphertext.length);
+    macMsg.set(nonce, 0);
+    macMsg.set(ciphertext, nonce.length);
+    const computedMac = await hmacRaw(key, macMsg);
+    if (!bytesEqual(computedMac, b64ToBytes(enc.mac))) {
+      msgEl.className = 'lock-msg err';
+      msgEl.textContent = '❌ Falsches Passwort.';
+      return;
+    }
+    const ks = await hmacKeystream(key, nonce, ciphertext.length);
+    const plain = new Uint8Array(ciphertext.length);
+    for (let i = 0; i < ciphertext.length; i++) plain[i] = ciphertext[i] ^ ks[i];
+    const obj = JSON.parse(new TextDecoder().decode(plain));
+    Object.keys(obj).forEach(sensor => {
+      PAYLOAD.data[sensor] = PAYLOAD.data[sensor] || {};
+      Object.assign(PAYLOAD.data[sensor], obj[sensor]);
+    });
+    FLAT = buildFlat();
+    pwInput.value = '';
+    msgEl.className = 'lock-msg ok';
+    msgEl.textContent = '✅ Innenraum-Daten entsperrt.';
+    applyFilters();
+  } catch (e) {
+    msgEl.className = 'lock-msg err';
+    msgEl.textContent = '❌ Fehler beim Entschlüsseln: ' + e.message;
+  }
+}
 
 /* ── Get date bounds from data ── */
 function getDateBounds() {
@@ -4074,6 +4185,9 @@ window.addEventListener('load', () => {
   applyDefaultSelection();
   buildChips('moduleChips', PAYLOAD.modules, selModules);
   buildChips('sensorChips', PAYLOAD.sensors, selSensors);
+  if (PAYLOAD.locked_enc) {
+    document.getElementById('indoorLockPanel').style.display = 'block';
+  }
   document.getElementById('fileInfo').textContent =
     `${FLAT.length.toLocaleString('de-DE')} Datenpunkte geladen · ${bounds.min} bis ${bounds.max}`;
   applyFilters({ deferRender: true });

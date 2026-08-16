@@ -34,6 +34,7 @@ jobs:
           NETATMO_CLIENT_ID: ${{ secrets.NETATMO_CLIENT_ID }}
           NETATMO_CLIENT_SECRET: ${{ secrets.NETATMO_CLIENT_SECRET }}
           NETATMO_REFRESH_TOKEN: ${{ secrets.NETATMO_REFRESH_TOKEN }}
+          NETATMO_VIEWER_PASSWORD: ${{ secrets.NETATMO_VIEWER_PASSWORD }}
         run: |
           # Skript ausführen; letzte Zeile enthält NEW_REFRESH_TOKEN=<wert>
           python fetch_and_export.py | tee /tmp/fetch_output.txt

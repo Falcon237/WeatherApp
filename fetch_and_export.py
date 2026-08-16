@@ -25,6 +25,8 @@ from pathlib import Path
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
+import password_lock
+
 # ── Konfiguration ──────────────────────────────────────────────────────────────
 MAX_DAYS = 365 * 2          # maximaler Daten-Horizont (2 Jahre)
 DELTA_DAYS = 7              # Tage zurück beim Delta-Abruf (Überlappung)
@@ -218,8 +220,20 @@ def prepare_payload(data: list) -> dict:
             if pts:
                 chart_data[sensor][module] = pts
 
-    return {'sensors': sensors, 'modules': modules,
-            'units': units, 'colors': colors, 'data': chart_data}
+    payload = {'sensors': sensors, 'modules': modules,
+               'units': units, 'colors': colors, 'data': chart_data}
+
+    public_data, locked_data, locked_modules = password_lock.split_locked_modules(
+        chart_data, modules)
+    if locked_modules:
+        password = password_lock.get_viewer_password()
+        payload['data'] = public_data
+        payload['locked_modules'] = locked_modules
+        if password and locked_data:
+            payload['locked_enc'] = password_lock.encrypt_json(
+                locked_data, password)
+
+    return payload
 
 
 def generate_html(payload: dict) -> str:
