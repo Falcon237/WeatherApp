@@ -23,6 +23,7 @@ import json
 import os
 import re
 import secrets
+from getpass import getpass
 from pathlib import Path
 
 PBKDF2_ITERATIONS = 200_000
@@ -60,9 +61,9 @@ def get_viewer_password() -> str:
         if saved:
             return saved
 
-    pw = input(
-        'Passwort fuer Innenraum-Daten (wird lokal gespeichert, '
-        'nicht im Repo): ').strip()
+    pw = getpass(
+        'Passwort fuer Innenraum-Daten (keine Anzeige beim Tippen, wird '
+        'lokal gespeichert, nicht im Repo): ').strip()
     if pw:
         pw_file.write_text(pw, encoding='utf-8')
     return pw
