@@ -24,12 +24,17 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from tkinter import messagebox, ttk
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
+from urllib import error as urllib_error
 
 # ── Endpunkte ──────────────────────────────────────────────────────────────────
 _AUTH_URL = 'https://api.netatmo.com/oauth2/authorize'
 _TOKEN_URL = 'https://api.netatmo.com/oauth2/token'
 _STATIONS_URL = 'https://api.netatmo.com/api/getstationsdata'
 _MEASURE_URL = 'https://api.netatmo.com/api/getmeasure'
+
+_API_MAX_ATTEMPTS = 6
+_API_MIN_INTERVAL = 0.25
+_API_RETRY_STATUS = {429, 500, 502, 503, 504}
 
 _REDIRECT_PORT = 9731          # lokaler Port für OAuth-Callback
 _REDIRECT_URI = f'http://localhost:{_REDIRECT_PORT}/callback'
@@ -258,14 +263,47 @@ class NetatmoDataDownloader:
             refresh_token=stored.get('refresh_token'),
             expires_at=stored.get('expires_at', 0),
         )
+        self._last_api_request = 0.0
+
+    def _wait_before_request(self) -> None:
+        """Verhindert eine zu schnelle Folge von Netatmo-API-Aufrufen."""
+        remaining = (_API_MIN_INTERVAL
+                     - (time.monotonic() - self._last_api_request))
+        if remaining > 0:
+            time.sleep(remaining)
 
     def _api_get(self, url: str, params: dict) -> dict:
         token = self._auth.get_access_token()
         qs = urllib_parse.urlencode(params)
         req = urllib_request.Request(f'{url}?{qs}')
         req.add_header('Authorization', f'Bearer {token}')
-        with urllib_request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read())
+        last_error = None
+        for attempt in range(_API_MAX_ATTEMPTS):
+            self._wait_before_request()
+            try:
+                self._last_api_request = time.monotonic()
+                with urllib_request.urlopen(req, timeout=30) as resp:
+                    return json.loads(resp.read())
+            except urllib_error.HTTPError as exc:
+                last_error = exc
+                if exc.code not in _API_RETRY_STATUS:
+                    raise
+                retry_after = exc.headers.get('Retry-After')
+                try:
+                    delay = float(retry_after) if retry_after else 0.0
+                except (TypeError, ValueError):
+                    delay = 0.0
+            except urllib_error.URLError as exc:
+                last_error = exc
+                delay = 0.0
+
+            if attempt + 1 < _API_MAX_ATTEMPTS:
+                # Exponentiell warten, aber einen Retry-After-Header beachten.
+                time.sleep(max(delay, min(2 ** attempt, 30)))
+
+        raise RuntimeError(
+            f'Netatmo API nach {_API_MAX_ATTEMPTS} Versuchen nicht erreichbar: '
+            f'{last_error}') from last_error
 
     def get_stations_data(self) -> dict:
         return self._api_get(_STATIONS_URL, {'get_favorites': 'false'})

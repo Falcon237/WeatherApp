@@ -4604,9 +4604,14 @@ class ViewerApp:
                 messagebox.showerror(
                     'Netatmo Direktimport', 'Enddatum muss nach dem Startdatum liegen.')
                 return
+            # Enddatum ist einschließlich: bis Ende des gewählten Tages laden,
+            # nicht nur bis Mitternacht am Tagesbeginn (sonst fehlen heutige Daten).
+            end_date_inclusive = min(
+                end_date + datetime.timedelta(days=1),
+                datetime.datetime.now())
             dialog.grab_release()
             dialog.destroy()
-            self._run_direct_import(creds, start_date, end_date)
+            self._run_direct_import(creds, start_date, end_date_inclusive)
 
         ttk.Button(btns, text='Abbrechen', command=cancel).pack(
             side=tk.RIGHT, padx=(6, 0))
