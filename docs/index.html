@@ -56,11 +56,31 @@
   .live-room-lock button { padding:12px 18px; border:1px solid #527fa3; border-radius:8px; background:#183650; color:#c2d9ef; font-size:15px; cursor:pointer; }
   .live-room-lock-msg { min-height:1.4em; color:#91abc4; font-size:13px; }
   .live-room-lock-msg.err { color:#e49b8d; }
+  .live-page-panel { position:relative; height:100%; min-height:0; display:flex; flex-direction:column; gap:clamp(10px,2vh,22px); padding:clamp(18px,3vw,44px); overflow:hidden; border:1px solid #294763; border-radius:18px; background:radial-gradient(ellipse at 80% 0,#183650 0,transparent 40%),linear-gradient(145deg,#10253b,#0b1727 72%); }
+  .live-page-head { display:flex; justify-content:space-between; align-items:flex-end; gap:18px; flex-shrink:0; }
+  .live-page-head h2 { margin-top:5px; color:#c2d9ef; font-size:clamp(24px,3.6vw,50px); font-weight:500; }
+  .live-page-value { color:#b7d8ee; font-size:clamp(42px,8vw,104px); line-height:.95; font-weight:400; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .live-page-value small { margin-left:5px; color:#82a9cc; font-size:.38em; }
+  .live-page-chart-wrap { flex:1; min-height:100px; position:relative; }
+  .live-page-footer { display:flex; justify-content:space-between; gap:10px; color:#7898b6; font-size:clamp(11px,1vw,15px); flex-shrink:0; }
+  .live-analysis-grid { flex:1; min-height:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); gap:clamp(10px,1.8vw,24px); }
+  .live-analysis-card { display:flex; flex-direction:column; justify-content:center; gap:8px; min-width:0; padding:clamp(12px,2vw,26px); border:1px solid #294763; border-radius:14px; background:linear-gradient(145deg,#122b42,#0c1c2d); }
+  .live-analysis-card .label { color:#87a9c8; font-size:clamp(11px,1.15vw,16px); letter-spacing:.07em; text-transform:uppercase; }
+  .live-analysis-card .value { color:#b7d8ee; font-size:clamp(26px,4vw,56px); line-height:1; font-variant-numeric:tabular-nums; }
+  .live-analysis-card .detail { color:#91abc4; font-size:clamp(11px,1.1vw,15px); }
+  .live-analysis-card.index { grid-column:span 2; }
+  .live-index-meter { height:clamp(10px,1.4vh,16px); overflow:hidden; border-radius:99px; background:#071321; }
+  .live-index-meter span { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#547d9d,#78bce4); transition:width .5s ease; }
+  .live-analysis-summary { display:flex; align-items:center; padding:clamp(12px,2vw,26px); border:1px solid #294763; border-radius:14px; background:#0c1c2d; color:#a9c9e8; font-size:clamp(13px,1.4vw,19px); line-height:1.5; }
+  .live-page-lock { position:absolute; z-index:2; inset:0; display:grid; place-items:center; padding:24px; border-radius:12px; background:#0b1727ed; color:#91abc4; text-align:center; font-size:clamp(15px,2vw,24px); }
+  .live-page-lock[hidden] { display:none; }
   body.live-fullscreen .live-room-slide { padding:clamp(8px,1.5vw,24px); }
   body.live-fullscreen .live-room-panel { border-radius:0; }
   body.live-fullscreen .live-room-current strong { font-size:clamp(56px,12vh,150px); }
+  body.live-fullscreen .live-page-slide { padding:clamp(8px,1.5vw,24px); }
+  body.live-fullscreen .live-page-panel { border-radius:0; }
   .live-nav { display:flex; justify-content:center; align-items:center; gap:8px; }
-  .live-nav .live-dot { width:28px; height:28px; padding:0; border-radius:50%; color:var(--muted); }
+  .live-nav .live-dot { width:auto; min-width:42px; height:34px; padding:0 12px; border-radius:18px; color:var(--muted); }
   .live-nav .live-dot.active { color:#fff; background:var(--accent); border-color:var(--accent); }
   body.live-fullscreen { overflow:hidden; }
   body.live-fullscreen header,
@@ -78,6 +98,9 @@
     .live-room-current { flex-wrap:wrap; justify-content:flex-end; gap:4px; }
     .live-room-current span { width:100%; text-align:right; }
     .live-room-footer { font-size:11px; }
+    .live-page-head { align-items:flex-start; }
+    .live-analysis-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .live-analysis-card.index { grid-column:span 2; }
   }
 
   /* Sidebar */
@@ -304,16 +327,65 @@
           </div>
         </section>
       </div>
-      <div class="live-slide" aria-label="Seite 2">2</div>
-      <div class="live-slide" aria-label="Seite 3">3</div>
-      <div class="live-slide" aria-label="Seite 4">4</div>
+      <div class="live-slide live-page-slide" aria-label="Wohnzimmer CO2-Verlauf">
+        <section class="live-page-panel">
+          <div class="live-page-head">
+            <div>
+              <div class="live-room-kicker">INNENRAUM · WOHNZIMMER</div>
+              <h2>CO₂ · Luftqualität</h2>
+            </div>
+            <div class="live-page-value"><span id="liveRoomCO2">--- </span><small>ppm</small></div>
+          </div>
+          <div class="live-page-chart-wrap">
+            <canvas id="liveRoomCO2Chart" aria-label="CO₂-Verlauf der letzten 24 Stunden"></canvas>
+            <div class="live-page-lock" id="liveRoomCO2Lock">Bitte zuerst auf der Temperaturseite die Innenraumdaten entsperren.</div>
+          </div>
+          <div class="live-page-footer"><span id="liveRoomCO2Status">Innenraumdaten erforderlich</span><span>Frisch &lt; 800 · Lüften ab 1.000 · Hoch ab 1.400 ppm</span></div>
+        </section>
+      </div>
+      <div class="live-slide live-page-slide" aria-label="Wohnzimmer Luftfeuchtigkeit">
+        <section class="live-page-panel">
+          <div class="live-page-head">
+            <div>
+              <div class="live-room-kicker">INNENRAUM · WOHNZIMMER</div>
+              <h2>Relative Luftfeuchtigkeit</h2>
+            </div>
+            <div class="live-page-value"><span id="liveRoomHumidity">--</span><small>%</small></div>
+          </div>
+          <div class="live-page-chart-wrap">
+            <canvas id="liveRoomHumidityChart" aria-label="Luftfeuchtigkeitsverlauf der letzten 24 Stunden"></canvas>
+            <div class="live-page-lock" id="liveRoomHumidityLock">Bitte zuerst auf der Temperaturseite die Innenraumdaten entsperren.</div>
+          </div>
+          <div class="live-page-footer"><span id="liveRoomHumidityStatus">Innenraumdaten erforderlich</span><span>Komfortbereich · 40–60 %</span></div>
+        </section>
+      </div>
+      <div class="live-slide live-page-slide" aria-label="Wohnzimmer Raumklima-Übersicht">
+        <section class="live-page-panel">
+          <div class="live-page-head">
+            <div>
+              <div class="live-room-kicker">INNENRAUM · WOHNZIMMER</div>
+              <h2>Raumklima im Überblick</h2>
+            </div>
+            <span class="live-room-footer">Orientierungswerte, keine medizinische Bewertung</span>
+          </div>
+          <div class="live-analysis-grid">
+            <div class="live-analysis-card"><span class="label">Temperatur</span><span class="value" id="liveAnalysisTemp">--</span><span class="detail" id="liveAnalysisTempDetail">Behaglich: 18–24 °C</span></div>
+            <div class="live-analysis-card"><span class="label">Luftfeuchtigkeit</span><span class="value" id="liveAnalysisHumidity">--</span><span class="detail" id="liveAnalysisHumidityDetail">Komfort: 40–60 %</span></div>
+            <div class="live-analysis-card"><span class="label">CO₂</span><span class="value" id="liveAnalysisCO2">--</span><span class="detail" id="liveAnalysisCO2Detail">Frische Luft: unter 800 ppm</span></div>
+            <div class="live-analysis-card index"><span class="label">Raumklima-Index</span><span class="value" id="liveAnalysisIndex">-- / 100</span><div class="live-index-meter"><span id="liveAnalysisMeter"></span></div><span class="detail" id="liveAnalysisIndexDetail">Wird aus verfügbaren Messwerten berechnet</span></div>
+            <div class="live-analysis-summary" id="liveAnalysisSummary">Innenraumdaten auf der Temperaturseite entsperren, um die Übersicht anzuzeigen.</div>
+          </div>
+          <div class="live-page-footer"><span id="liveAnalysisUpdated">Letzte verfügbare Messwerte</span><span>Komfort-Index nach Temperatur, Feuchte und CO₂</span></div>
+          <div class="live-page-lock" id="liveAnalysisLock">Bitte zuerst auf der Temperaturseite die Innenraumdaten entsperren.</div>
+        </section>
+      </div>
     </div>
   </div>
   <div class="live-nav" aria-label="Karussell-Seiten">
-    <button class="live-dot active" type="button" aria-label="Seite 1" aria-pressed="true" onclick="showLivePage(0)">1</button>
-    <button class="live-dot" type="button" aria-label="Seite 2" aria-pressed="false" onclick="showLivePage(1)">2</button>
-    <button class="live-dot" type="button" aria-label="Seite 3" aria-pressed="false" onclick="showLivePage(2)">3</button>
-    <button class="live-dot" type="button" aria-label="Seite 4" aria-pressed="false" onclick="showLivePage(3)">4</button>
+    <button class="live-dot active" type="button" aria-label="Temperatur" aria-pressed="true" onclick="showLivePage(0)">T</button>
+    <button class="live-dot" type="button" aria-label="Kohlendioxid" aria-pressed="false" onclick="showLivePage(1)">CO₂</button>
+    <button class="live-dot" type="button" aria-label="Luftfeuchtigkeit" aria-pressed="false" onclick="showLivePage(2)">RH</button>
+    <button class="live-dot" type="button" aria-label="Raumklima-Übersicht" aria-pressed="false" onclick="showLivePage(3)">Klima</button>
   </div>
 </section>
 <div class="layout" id="app-data" hidden>
@@ -676,6 +748,7 @@ function refreshLiveRoomTemperature() {
       form.hidden = !PAYLOAD.locked_enc;
     }
     lock.hidden = false;
+    refreshLiveRoomMetrics();
     return;
   }
 
@@ -693,6 +766,8 @@ function refreshLiveRoomTemperature() {
     ? [{ x: chartPoints[0].x, y: 20 }, { x: chartPoints[chartPoints.length - 1].x, y: 20 }]
     : [];
   const values = visiblePoints.map(([, value]) => value);
+  const dataMin = values.reduce((min, value) => Math.min(min, value), Infinity);
+  const dataMax = values.reduce((max, value) => Math.max(max, value), -Infinity);
   const config = {
     type: 'line',
     data: {
@@ -751,8 +826,8 @@ function refreshLiveRoomTemperature() {
           ticks: { color: '#7898b6', maxTicksLimit: 8, maxRotation: 0 },
         },
         y: {
-          suggestedMin: Math.min(16, ...values.map(value => value - 1)),
-          suggestedMax: Math.max(24, ...values.map(value => value + 1)),
+          suggestedMin: Math.min(16, dataMin - 1),
+          suggestedMax: Math.max(24, dataMax + 1),
           grid: {
             color: context => Math.abs(context.tick.value - 20) < .001
               ? 'rgba(216, 189, 131, .32)'
@@ -776,6 +851,257 @@ function refreshLiveRoomTemperature() {
     liveRoomChart = new Chart(
       document.getElementById('liveRoomChart').getContext('2d'), config);
   }
+  refreshLiveRoomMetrics();
+}
+
+function getLiveRoomSeries(kind) {
+  const module = PAYLOAD.modules.find(
+    name => name.toLocaleLowerCase('de-DE') === LIVE_ROOM_MODULE.toLocaleLowerCase('de-DE'));
+  if (!module) return [];
+  const patterns = {
+    temperature: /temp|temperatur/i,
+    co2: /co.?2/i,
+    humidity: /humidity|hum|feucht/i,
+  };
+  const sensor = PAYLOAD.sensors.find(name => {
+    const unit = PAYLOAD.units[name] || '';
+    if (patterns[kind].test(name)) return true;
+    if (kind === 'temperature') return /°\s*C/i.test(unit);
+    if (kind === 'co2') return /ppm/i.test(unit);
+    return unit === '%';
+  });
+  return sensor ? PAYLOAD.data[sensor]?.[module] || [] : [];
+}
+
+function liveRoomChartConfig(points, label, color, unit, options = {}) {
+  const latestTs = points[points.length - 1][0];
+  const minTs = latestTs - LIVE_ROOM_WINDOW_MS;
+  const visible = points.filter(([ts]) => ts >= minTs).map(([x, y]) => ({ x, y }));
+  const thresholds = options.thresholds || [];
+  const datasets = [{
+    label,
+    data: visible,
+    borderColor: color,
+    backgroundColor: options.fillColor || 'rgba(77, 145, 190, .12)',
+    borderWidth: 3,
+    pointRadius: 0,
+    pointHitRadius: 12,
+    tension: .2,
+    fill: Boolean(options.fillColor),
+    ...(options.segment ? { segment: options.segment } : {}),
+  }];
+  thresholds.forEach(threshold => datasets.push({
+    label: threshold.label,
+    data: [{ x: minTs, y: threshold.value }, { x: latestTs, y: threshold.value }],
+    borderColor: threshold.color,
+    borderWidth: threshold.width || 2,
+    borderDash: threshold.dash || [8, 7],
+    pointRadius: 0,
+    fill: false,
+  }));
+  return {
+    type: 'line',
+    data: { datasets },
+    options: {
+      animation: { duration: 450 },
+      maintainAspectRatio: false,
+      normalized: true,
+      parsing: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: {
+          labels: { color: '#91abc4', usePointStyle: true, boxWidth: 10, padding: 18 },
+        },
+        tooltip: {
+          backgroundColor: '#10253b',
+          borderColor: '#294763',
+          borderWidth: 1,
+          titleColor: '#b7d8ee',
+          bodyColor: '#a9c9e8',
+          callbacks: {
+            label: context => ` ${context.dataset.label}: ${context.parsed.y.toLocaleString('de-DE', { maximumFractionDigits: 1 })} ${unit}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'time',
+          min: minTs,
+          max: latestTs,
+          grid: { color: 'rgba(101, 139, 173, .12)' },
+          border: { color: '#294763' },
+          ticks: { color: '#7898b6', maxTicksLimit: 8, maxRotation: 0 },
+        },
+        y: {
+          ...(options.min !== undefined ? { min: options.min } : {}),
+          ...(options.max !== undefined ? { max: options.max } : {}),
+          ...(options.suggestedMin !== undefined ? { suggestedMin: options.suggestedMin } : {}),
+          ...(options.suggestedMax !== undefined ? { suggestedMax: options.suggestedMax } : {}),
+          grid: {
+            color: context => thresholds.some(threshold =>
+              Math.abs(context.tick.value - threshold.value) < .001)
+              ? 'rgba(216, 189, 131, .24)'
+              : 'rgba(101, 139, 173, .12)',
+          },
+          border: { color: '#294763' },
+          ticks: {
+            color: '#7898b6',
+            callback: value => `${Number(value).toLocaleString('de-DE', { maximumFractionDigits: 0 })}${unit}`,
+          },
+        },
+      },
+    },
+  };
+}
+
+function updateLiveRoomChart(chartRef, canvasId, points, label, color, unit, options) {
+  if (!points.length) return null;
+  const config = liveRoomChartConfig(points, label, color, unit, options);
+  if (chartRef) {
+    chartRef.data = config.data;
+    chartRef.options = config.options;
+    chartRef.update();
+    return chartRef;
+  }
+  return new Chart(document.getElementById(canvasId).getContext('2d'), config);
+}
+
+let liveRoomCO2Chart = null;
+let liveRoomHumidityChart = null;
+
+function refreshLiveRoomMetrics() {
+  const co2 = getLiveRoomSeries('co2');
+  const humidity = getLiveRoomSeries('humidity');
+  const temperature = getLiveRoomSeries('temperature');
+  const co2Lock = document.getElementById('liveRoomCO2Lock');
+  const humidityLock = document.getElementById('liveRoomHumidityLock');
+  const analysisLock = document.getElementById('liveAnalysisLock');
+  co2Lock.hidden = co2.length > 0;
+  humidityLock.hidden = humidity.length > 0;
+  analysisLock.hidden = Boolean(co2.length || humidity.length || temperature.length);
+
+  if (co2.length) {
+    const value = co2[co2.length - 1][1];
+    const status = value < 800 ? 'Gute, frische Luft'
+      : value < 1000 ? 'Gut · Lüften bei Bedarf'
+        : value < 1400 ? 'Lüften empfohlen'
+          : value < 2000 ? 'Hohe CO₂-Konzentration'
+            : 'Sehr hohe CO₂-Konzentration';
+    document.getElementById('liveRoomCO2').textContent =
+      Number(value).toLocaleString('de-DE', { maximumFractionDigits: 0 });
+    document.getElementById('liveRoomCO2Status').textContent =
+      `${status} · ${formatLiveRoomTime(co2[co2.length - 1][0])}`;
+    liveRoomCO2Chart = updateLiveRoomChart(
+      liveRoomCO2Chart, 'liveRoomCO2Chart', co2, 'CO₂', '#9f9bd8', ' ppm', {
+        min: 350,
+        thresholds: [
+          { value: 800, label: 'Frische Luft · 800 ppm', color: '#6fae94' },
+          { value: 1000, label: 'Lüften · 1.000 ppm', color: '#d8bd83' },
+          { value: 1400, label: 'Hoch · 1.400 ppm', color: '#c78278' },
+        ],
+        segment: {
+          borderColor: context => context.p1.parsed.y < 800
+            ? '#78b99b' : context.p1.parsed.y < 1000
+              ? '#a6b891' : context.p1.parsed.y < 1400 ? '#d8bd83' : '#c78278',
+        },
+      });
+  }
+
+  if (humidity.length) {
+    const value = humidity[humidity.length - 1][1];
+    const status = value < 30 ? 'Sehr trocken'
+      : value < 40 ? 'Eher trocken'
+        : value <= 60 ? 'Im Komfortbereich'
+          : value <= 70 ? 'Eher feucht' : 'Sehr feucht';
+    document.getElementById('liveRoomHumidity').textContent =
+      Number(value).toLocaleString('de-DE', { maximumFractionDigits: 0 });
+    document.getElementById('liveRoomHumidityStatus').textContent =
+      `${status} · ${formatLiveRoomTime(humidity[humidity.length - 1][0])}`;
+    liveRoomHumidityChart = updateLiveRoomChart(
+      liveRoomHumidityChart, 'liveRoomHumidityChart', humidity,
+      'Relative Luftfeuchtigkeit', '#78b99b', ' %', {
+        min: 0,
+        max: 100,
+        thresholds: [
+          { value: 40, label: 'Komfortbereich · 40 %', color: '#789d8b' },
+          { value: 60, label: 'Komfortbereich · 60 %', color: '#789d8b' },
+        ],
+      });
+  }
+
+  const latestValue = points => points.length ? points[points.length - 1][1] : null;
+  const t = latestValue(temperature);
+  const rh = latestValue(humidity);
+  const co2Value = latestValue(co2);
+  const score = comfortScoreInd(t, rh, co2Value);
+  setLiveAnalysisMetric('liveAnalysisTemp', t, ' °C', 1);
+  setLiveAnalysisMetric('liveAnalysisHumidity', rh, ' %', 0);
+  setLiveAnalysisMetric('liveAnalysisCO2', co2Value, ' ppm', 0);
+  document.getElementById('liveAnalysisTempDetail').textContent =
+    t === null ? 'Keine Temperaturmessung'
+      : t < 18 ? 'Unter dem Richtwert · 18 °C'
+        : t <= 24 ? 'Im Behaglichkeitsbereich · 18–24 °C'
+          : 'Über dem Richtwert · 24 °C';
+  document.getElementById('liveAnalysisHumidityDetail').textContent =
+    rh === null ? 'Keine Feuchtemessung'
+      : rh < 40 ? 'Eher trocken · Ziel 40–60 %'
+        : rh <= 60 ? 'Im Komfortbereich · 40–60 %'
+          : 'Eher feucht · Ziel 40–60 %';
+  document.getElementById('liveAnalysisCO2Detail').textContent =
+    co2Value === null ? 'Keine CO₂-Messung'
+      : co2Value < 800 ? 'Frische Luft · unter 800 ppm'
+        : co2Value < 1000 ? 'Gut · unter 1.000 ppm'
+          : co2Value < 1400 ? 'Lüften empfohlen'
+            : 'Hoher Wert · Lüften empfohlen';
+  document.getElementById('liveAnalysisIndex').textContent =
+    score === null ? '— / 100' : `${Math.round(score)} / 100`;
+  document.getElementById('liveAnalysisMeter').style.width =
+    score === null ? '0%' : `${Math.max(0, Math.min(100, score))}%`;
+  document.getElementById('liveAnalysisMeter').style.background =
+    score === null ? '#547d9d' : score >= 70 ? '#78b99b'
+      : score >= 40 ? '#d8bd83' : '#c78278';
+  document.getElementById('liveAnalysisIndexDetail').textContent =
+    score === null ? 'Noch zu wenige Messwerte für einen Index'
+      : score >= 70 ? 'Günstige Kombination der Messwerte'
+        : score >= 40 ? 'Einzelne Werte liegen außerhalb des Komfortbereichs'
+          : 'Mehrere Werte liegen deutlich außerhalb des Komfortbereichs';
+  const advice = co2Value !== null && co2Value >= 1000
+    ? 'CO₂ ist erhöht. Kurzes Stoßlüften kann die Raumluft verbessern.'
+    : rh !== null && rh > 60
+      ? 'Die Luftfeuchtigkeit ist erhöht. Regelmäßiges Lüften und Beobachten hilft.'
+      : rh !== null && rh < 40
+        ? 'Die Luft ist eher trocken. Lüften Sie bedarfsgerecht und beobachten Sie den Verlauf.'
+        : t !== null && t < 18
+          ? 'Die Raumtemperatur liegt unter dem Behaglichkeitsbereich von 18–24 °C.'
+          : t !== null && t > 24
+            ? 'Die Raumtemperatur liegt über dem Behaglichkeitsbereich von 18–24 °C.'
+            : score === null
+              ? 'Noch nicht genügend Innenraum-Messwerte für eine verlässliche Übersicht.'
+              : score >= 70
+                ? 'Die verfügbaren Messwerte liegen überwiegend im Orientierungsbereich.'
+                : 'Der Raumklima-Index ist niedrig. Prüfen Sie die einzelnen Messwerte und deren Verlauf.';
+  document.getElementById('liveAnalysisSummary').textContent = advice;
+  const lastTs = [temperature, humidity, co2]
+    .filter(points => points.length)
+    .reduce((latest, points) =>
+      Math.max(latest, points[points.length - 1][0]), -Infinity);
+  document.getElementById('liveAnalysisUpdated').textContent =
+    Number.isFinite(lastTs) ? `Letzte Messung · ${formatLiveRoomTime(lastTs)}`
+      : 'Keine Innenraum-Messwerte verfügbar';
+}
+
+function setLiveAnalysisMetric(id, value, unit, fractionDigits) {
+  document.getElementById(id).textContent = value === null
+    ? '—' : `${Number(value).toLocaleString('de-DE', {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+    })}${unit}`;
+}
+
+function formatLiveRoomTime(ts) {
+  return new Date(ts).toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
 }
 
 /* ── Get date bounds from data ── */
