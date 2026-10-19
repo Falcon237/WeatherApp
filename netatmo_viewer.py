@@ -380,7 +380,30 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   header { background: linear-gradient(135deg,#1f2a3c,#0d1117); padding: 18px 24px; border-bottom: 1px solid var(--border); display:flex; align-items:center; gap:12px; }
   header h1 { font-size:20px; font-weight:600; color:var(--accent); }
   header .sub { color:var(--muted); font-size:12px; }
-  .layout { display:flex; height:calc(100vh - 60px); }
+  .layout { display:flex; height:calc(100vh - 106px); }
+  [hidden] { display:none !important; }
+  .app-tabs { display:flex; gap:4px; padding:0 24px; background:var(--card); border-bottom:1px solid var(--border); }
+  .app-tab { padding:10px 16px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--muted); cursor:pointer; font-size:13px; }
+  .app-tab:hover { color:var(--text); }
+  .app-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .live-view { height:calc(100vh - 106px); min-height:300px; padding:12px 16px 16px; display:flex; flex-direction:column; gap:10px; }
+  .live-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+  .live-controls label { color:var(--muted); font-size:12px; }
+  .live-controls input { width:82px; background:#0d1117; border:1px solid var(--border); color:var(--text); padding:6px 8px; border-radius:6px; }
+  .live-controls button, .live-nav button { background:#0d1117; border:1px solid var(--border); color:var(--text); border-radius:6px; padding:6px 10px; cursor:pointer; }
+  .live-controls button:hover, .live-nav button:hover { border-color:var(--accent); color:var(--accent); }
+  .live-status { color:var(--muted); font-size:12px; }
+  .live-stage { flex:1; min-height:0; overflow:hidden; border:1px solid var(--border); border-radius:14px; background:#111827; }
+  .live-track { display:flex; width:100%; height:100%; transition:transform .7s cubic-bezier(.22,.7,.25,1); will-change:transform; }
+  .live-slide { flex:0 0 100%; display:grid; place-items:center; color:#fff; font-size:clamp(8rem,36vw,28rem); font-weight:700; line-height:1; user-select:none; }
+  .live-nav { display:flex; justify-content:center; align-items:center; gap:8px; }
+  .live-nav .live-dot { width:28px; height:28px; padding:0; border-radius:50%; color:var(--muted); }
+  .live-nav .live-dot.active { color:#fff; background:var(--accent); border-color:var(--accent); }
+  @media (max-width:600px) {
+    .app-tabs { padding:0 12px; }
+    .live-view { padding:10px; }
+    .live-controls { gap:6px; }
+  }
 
   /* Sidebar */
   .sidebar { width:260px; min-width:220px; background:var(--card); border-right:1px solid var(--border); padding:16px; overflow-y:auto; flex-shrink:0; }
@@ -561,7 +584,34 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="sub" id="fileInfo">Lade…</div>
   </div>
 </header>
-<div class="layout">
+<nav class="app-tabs" aria-label="Hauptansichten">
+  <button class="app-tab active" id="app-tab-live" aria-selected="true" onclick="switchAppView('live')">Live</button>
+  <button class="app-tab" id="app-tab-data" aria-selected="false" onclick="switchAppView('data')">Daten</button>
+</nav>
+<section class="live-view" id="app-live" aria-label="Live-Karussell">
+  <div class="live-controls">
+    <label for="liveInterval">Intervall (Sekunden)</label>
+    <input id="liveInterval" type="number" min="1" max="3600" step="1" value="5">
+    <button type="button" onclick="applyLiveInterval()">Übernehmen</button>
+    <button type="button" id="fullscreenButton" onclick="toggleLiveFullscreen()">Vollbild</button>
+    <span class="live-status" id="liveStatus" role="status" aria-live="polite">Wechsel alle 5 Sekunden</span>
+  </div>
+  <div class="live-stage" id="liveStage">
+    <div class="live-track" id="liveTrack">
+      <div class="live-slide" aria-label="Seite 1">1</div>
+      <div class="live-slide" aria-label="Seite 2">2</div>
+      <div class="live-slide" aria-label="Seite 3">3</div>
+      <div class="live-slide" aria-label="Seite 4">4</div>
+    </div>
+  </div>
+  <div class="live-nav" aria-label="Karussell-Seiten">
+    <button class="live-dot active" type="button" aria-label="Seite 1" aria-pressed="true" onclick="showLivePage(0)">1</button>
+    <button class="live-dot" type="button" aria-label="Seite 2" aria-pressed="false" onclick="showLivePage(1)">2</button>
+    <button class="live-dot" type="button" aria-label="Seite 3" aria-pressed="false" onclick="showLivePage(2)">3</button>
+    <button class="live-dot" type="button" aria-label="Seite 4" aria-pressed="false" onclick="showLivePage(3)">4</button>
+  </div>
+</section>
+<div class="layout" id="app-data" hidden>
   <div class="sidebar">
     <h3>Zeitraum</h3>
     <div class="preset-row">
@@ -628,6 +678,80 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 <script>
 const PAYLOAD = __PAYLOAD__;
+
+let livePage = 0;
+let liveIntervalMs = 5000;
+let liveTimer = null;
+
+function updateLivePage() {
+  document.getElementById('liveTrack').style.transform =
+    `translateX(-${livePage * 100}%)`;
+  document.querySelectorAll('.live-dot').forEach((button, index) => {
+    const active = index === livePage;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function showLivePage(index) {
+  livePage = (index + 4) % 4;
+  updateLivePage();
+  scheduleLiveAdvance();
+}
+
+function scheduleLiveAdvance() {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(() => showLivePage(livePage + 1), liveIntervalMs);
+}
+
+function applyLiveInterval() {
+  const input = document.getElementById('liveInterval');
+  const seconds = Number(input.value);
+  const status = document.getElementById('liveStatus');
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 3600) {
+    status.textContent = 'Bitte 1 bis 3600 Sekunden eingeben.';
+    input.focus();
+    return;
+  }
+  liveIntervalMs = seconds * 1000;
+  status.textContent = `Wechsel alle ${seconds} Sekunden`;
+  scheduleLiveAdvance();
+}
+
+function switchAppView(view) {
+  const live = view === 'live';
+  document.getElementById('app-live').hidden = !live;
+  document.getElementById('app-data').hidden = live;
+  document.getElementById('app-tab-live').classList.toggle('active', live);
+  document.getElementById('app-tab-live').setAttribute('aria-selected', String(live));
+  document.getElementById('app-tab-data').classList.toggle('active', !live);
+  document.getElementById('app-tab-data').setAttribute('aria-selected', String(!live));
+  if (!live) {
+    requestAnimationFrame(() => requestAnimationFrame(() => renderCurrentView()));
+  }
+}
+
+function toggleLiveFullscreen() {
+  const status = document.getElementById('liveStatus');
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(error => {
+      status.textContent = `Vollbild konnte nicht beendet werden: ${error.message}`;
+    });
+    return;
+  }
+  if (!document.documentElement.requestFullscreen) {
+    status.textContent = 'Vollbild wird von diesem Browser nicht unterstützt.';
+    return;
+  }
+  document.documentElement.requestFullscreen().catch(error => {
+    status.textContent = `Vollbild nicht verfügbar: ${error.message}`;
+  });
+}
+
+document.addEventListener('fullscreenchange', () => {
+  document.getElementById('fullscreenButton').textContent =
+    document.fullscreenElement ? 'Vollbild beenden' : 'Vollbild';
+});
 
 let aggMode    = 'raw';
 let selModules = new Set();
@@ -4179,6 +4303,7 @@ function resetFilters() {
 
 /* ── Init ── */
 window.addEventListener('load', () => {
+  scheduleLiveAdvance();
   const bounds = getDateBounds();
   document.getElementById('dateFrom').value = bounds.min;
   document.getElementById('dateTo').value   = bounds.max;
