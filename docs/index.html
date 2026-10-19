@@ -39,6 +39,14 @@
   .live-nav { display:flex; justify-content:center; align-items:center; gap:8px; }
   .live-nav .live-dot { width:28px; height:28px; padding:0; border-radius:50%; color:var(--muted); }
   .live-nav .live-dot.active { color:#fff; background:var(--accent); border-color:var(--accent); }
+  body.live-fullscreen { overflow:hidden; }
+  body.live-fullscreen header,
+  body.live-fullscreen .app-tabs,
+  body.live-fullscreen .live-controls,
+  body.live-fullscreen .live-nav { display:none; }
+  body.live-fullscreen .live-view { height:100vh; min-height:0; padding:0; gap:0; }
+  body.live-fullscreen .live-stage { border:0; border-radius:0; }
+  body.live-fullscreen .live-slide { font-size:min(80vh, 80vw); }
   @media (max-width:600px) {
     .app-tabs { padding:0 12px; }
     .live-view { padding:10px; }
@@ -389,6 +397,7 @@ function toggleLiveFullscreen() {
 }
 
 document.addEventListener('fullscreenchange', () => {
+  document.body.classList.toggle('live-fullscreen', Boolean(document.fullscreenElement));
   document.getElementById('fullscreenButton').textContent =
     document.fullscreenElement ? 'Vollbild beenden' : 'Vollbild';
 });
