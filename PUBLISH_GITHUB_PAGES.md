@@ -26,15 +26,17 @@ https://<github-user>.github.io/<repository-name>/
 
 Diesen Link kannst du versenden. Die Empfaenger sehen direkt die geladene App, nicht die Repository-Ansicht.
 
-Der Live-Tab zeigt vier Wohnzimmer-Ansichten: Temperaturverlauf mit 20-°C-Linie,
-CO₂-Verlauf, relative Luftfeuchtigkeit und eine Raumklima-Uebersicht mit
-Wohlfuehlindex und Hinweisen. Die Testseiten wurden durch diese vier Ansichten
-ersetzt. Die Innenraumdaten bleiben verschluesselt; zum
-Anzeigen zuerst das Innenraum-Passwort auf der Temperaturseite eingeben.
-Vollbild blendet Bedienelemente aus. Das Wechselintervall ist fuer eine gut
-lesbare Anzeige auf einem Tablet standardmaessig auf 15 Sekunden gesetzt und
-kann angepasst werden. Angezeigt werden die zuletzt importierten Messwerte,
-nicht laufende Echtzeitdaten.
+Der Live-Tab kann Ansichten fuer Wohnzimmer, Schlafzimmer und Zimmer in einem
+Karussell kombinieren. Raum- und Seiten-Auswahl (Temperatur, CO₂, Feuchte,
+Raumklima-Uebersicht sowie verfuegbare Zusatzsensoren wie Geraeusch und
+Luftdruck) laesst sich direkt per Checkbox anpassen; die Auswahl wird im
+Browser gespeichert. Nicht vorhandene Sensoren erzeugen keine Karussellseite.
+Die Innenraumdaten bleiben verschluesselt; zum Anzeigen zuerst das
+Innenraum-Passwort auf einer Temperaturseite eingeben. Vollbild blendet
+Bedienelemente aus. Das Wechselintervall ist fuer eine gut lesbare Anzeige auf
+einem Tablet standardmaessig auf 15 Sekunden gesetzt und kann angepasst
+werden. Angezeigt werden die zuletzt importierten Messwerte, nicht laufende
+Echtzeitdaten.
 
 ## In dieses Repository veroeffentlichen
 

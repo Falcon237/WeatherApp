@@ -33,6 +33,12 @@
   .live-controls button, .live-nav button { background:#0d1117; border:1px solid var(--border); color:var(--text); border-radius:6px; padding:6px 10px; cursor:pointer; }
   .live-controls button:hover, .live-nav button:hover { border-color:var(--accent); color:var(--accent); }
   .live-status { color:var(--muted); font-size:12px; }
+  .live-selection { display:flex; flex-wrap:wrap; gap:8px 20px; align-items:center; padding:8px 10px; border:1px solid #294763; border-radius:10px; background:#0d1d30; }
+  .live-selection-group { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+  .live-selection-label { margin-right:3px; color:#7898b6; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+  .live-choice { position:relative; display:inline-flex; align-items:center; gap:5px; padding:5px 9px; border:1px solid #294763; border-radius:16px; color:#91abc4; font-size:12px; cursor:pointer; user-select:none; }
+  .live-choice:has(input:checked) { border-color:#527fa3; background:#183650; color:#c2d9ef; }
+  .live-choice input { width:14px; height:14px; margin:0; accent-color:#78bce4; }
   .live-stage { flex:1; min-height:0; overflow:hidden; border:1px solid var(--border); border-radius:14px; background:#111827; }
   .live-track { display:flex; width:100%; height:100%; transition:transform .7s cubic-bezier(.22,.7,.25,1); will-change:transform; }
   .live-slide { flex:0 0 100%; display:grid; place-items:center; color:#a9c9e8; font-size:clamp(8rem,36vw,28rem); font-weight:700; line-height:1; user-select:none; }
@@ -62,6 +68,7 @@
   .live-page-value { color:#b7d8ee; font-size:clamp(42px,8vw,104px); line-height:.95; font-weight:400; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .live-page-value small { margin-left:5px; color:#82a9cc; font-size:.38em; }
   .live-page-chart-wrap { flex:1; min-height:100px; position:relative; }
+  .live-page-chart-wrap canvas { display:block; width:100% !important; height:100% !important; }
   .live-page-footer { display:flex; justify-content:space-between; gap:10px; color:#7898b6; font-size:clamp(11px,1vw,15px); flex-shrink:0; }
   .live-analysis-grid { flex:1; min-height:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); gap:clamp(10px,1.8vw,24px); }
   .live-analysis-card { display:flex; flex-direction:column; justify-content:center; gap:8px; min-width:0; padding:clamp(12px,2vw,26px); border:1px solid #294763; border-radius:14px; background:linear-gradient(145deg,#122b42,#0c1c2d); }
@@ -73,19 +80,22 @@
   .live-index-meter span { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#547d9d,#78bce4); transition:width .5s ease; }
   .live-analysis-summary { display:flex; align-items:center; padding:clamp(12px,2vw,26px); border:1px solid #294763; border-radius:14px; background:#0c1c2d; color:#a9c9e8; font-size:clamp(13px,1.4vw,19px); line-height:1.5; }
   .live-page-lock { position:absolute; z-index:2; inset:0; display:grid; place-items:center; padding:24px; border-radius:12px; background:#0b1727ed; color:#91abc4; text-align:center; font-size:clamp(15px,2vw,24px); }
+  .live-page-lock input { flex:1; min-width:180px; padding:12px 14px; border:1px solid #355777; border-radius:8px; background:#0d1d30; color:#c2d9ef; font-size:16px; }
+  .live-page-lock button { padding:12px 18px; border:1px solid #527fa3; border-radius:8px; background:#183650; color:#c2d9ef; font-size:15px; cursor:pointer; }
   .live-page-lock[hidden] { display:none; }
   body.live-fullscreen .live-room-slide { padding:clamp(8px,1.5vw,24px); }
   body.live-fullscreen .live-room-panel { border-radius:0; }
   body.live-fullscreen .live-room-current strong { font-size:clamp(56px,12vh,150px); }
   body.live-fullscreen .live-page-slide { padding:clamp(8px,1.5vw,24px); }
   body.live-fullscreen .live-page-panel { border-radius:0; }
-  .live-nav { display:flex; justify-content:center; align-items:center; gap:8px; }
+  .live-nav { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:8px; max-height:96px; overflow-y:auto; }
   .live-nav .live-dot { width:auto; min-width:42px; height:34px; padding:0 12px; border-radius:18px; color:var(--muted); }
   .live-nav .live-dot.active { color:#fff; background:var(--accent); border-color:var(--accent); }
   body.live-fullscreen { overflow:hidden; }
   body.live-fullscreen header,
   body.live-fullscreen .app-tabs,
   body.live-fullscreen .live-controls,
+  body.live-fullscreen .live-selection,
   body.live-fullscreen .live-nav { display:none; }
   body.live-fullscreen .live-view { height:100vh; min-height:0; padding:0; gap:0; }
   body.live-fullscreen .live-stage { border:0; border-radius:0; }
@@ -294,99 +304,18 @@
     <button type="button" id="fullscreenButton" onclick="toggleLiveFullscreen()">Vollbild</button>
     <span class="live-status" id="liveStatus" role="status" aria-live="polite">Wechsel alle 15 Sekunden</span>
   </div>
-  <div class="live-stage" id="liveStage">
-    <div class="live-track" id="liveTrack">
-      <div class="live-slide live-room-slide" aria-label="Wohnzimmer Temperatur">
-        <section class="live-room-panel">
-          <div class="live-room-heading">
-            <div>
-              <div class="live-room-kicker">INNENRAUM · WOHNZIMMER</div>
-              <h2>Temperaturverlauf</h2>
-            </div>
-            <div class="live-room-current">
-              <span>LETZTER WERT</span>
-              <strong id="liveRoomCurrent">--.-</strong>
-              <span class="unit">°C</span>
-            </div>
-          </div>
-          <div class="live-room-chart-wrap">
-            <canvas id="liveRoomChart" aria-label="Wohnzimmer-Temperaturverlauf der letzten 24 Stunden"></canvas>
-            <div class="live-room-lock" id="liveRoomLock">
-              <h3 id="liveRoomLockTitle">Wohnzimmerdaten gesperrt</h3>
-              <p id="liveRoomLockDescription">Zum Anzeigen der privaten Innenraum-Temperatur bitte das Innenraum-Passwort eingeben.</p>
-              <div class="live-room-lock-row" id="liveRoomLockForm">
-                <input id="liveIndoorPwInput" type="password" autocomplete="current-password" placeholder="Innenraum-Passwort" onkeydown="if(event.key==='Enter')unlockIndoor('liveIndoorPwInput', 'liveRoomLockMsg')">
-                <button type="button" onclick="unlockIndoor('liveIndoorPwInput', 'liveRoomLockMsg')">Entsperren</button>
-              </div>
-              <div class="live-room-lock-msg" id="liveRoomLockMsg" role="status" aria-live="polite"></div>
-            </div>
-          </div>
-          <div class="live-room-footer">
-            <span id="liveRoomUpdated">Letzte 24 Stunden</span>
-            <span class="live-room-target">Referenzlinie · 20 °C</span>
-          </div>
-        </section>
-      </div>
-      <div class="live-slide live-page-slide" aria-label="Wohnzimmer CO2-Verlauf">
-        <section class="live-page-panel">
-          <div class="live-page-head">
-            <div>
-              <div class="live-room-kicker">INNENRAUM · WOHNZIMMER</div>
-              <h2>CO₂ · Luftqualität</h2>
-            </div>
-            <div class="live-page-value"><span id="liveRoomCO2">--- </span><small>ppm</small></div>
-          </div>
-          <div class="live-page-chart-wrap">
-            <canvas id="liveRoomCO2Chart" aria-label="CO₂-Verlauf der letzten 24 Stunden"></canvas>
-            <div class="live-page-lock" id="liveRoomCO2Lock">Bitte zuerst auf der Temperaturseite die Innenraumdaten entsperren.</div>
-          </div>
-          <div class="live-page-footer"><span id="liveRoomCO2Status">Innenraumdaten erforderlich</span><span>Frisch &lt; 800 · Lüften ab 1.000 · Hoch ab 1.400 ppm</span></div>
-        </section>
-      </div>
-      <div class="live-slide live-page-slide" aria-label="Wohnzimmer Luftfeuchtigkeit">
-        <section class="live-page-panel">
-          <div class="live-page-head">
-            <div>
-              <div class="live-room-kicker">INNENRAUM · WOHNZIMMER</div>
-              <h2>Relative Luftfeuchtigkeit</h2>
-            </div>
-            <div class="live-page-value"><span id="liveRoomHumidity">--</span><small>%</small></div>
-          </div>
-          <div class="live-page-chart-wrap">
-            <canvas id="liveRoomHumidityChart" aria-label="Luftfeuchtigkeitsverlauf der letzten 24 Stunden"></canvas>
-            <div class="live-page-lock" id="liveRoomHumidityLock">Bitte zuerst auf der Temperaturseite die Innenraumdaten entsperren.</div>
-          </div>
-          <div class="live-page-footer"><span id="liveRoomHumidityStatus">Innenraumdaten erforderlich</span><span>Komfortbereich · 40–60 %</span></div>
-        </section>
-      </div>
-      <div class="live-slide live-page-slide" aria-label="Wohnzimmer Raumklima-Übersicht">
-        <section class="live-page-panel">
-          <div class="live-page-head">
-            <div>
-              <div class="live-room-kicker">INNENRAUM · WOHNZIMMER</div>
-              <h2>Raumklima im Überblick</h2>
-            </div>
-            <span class="live-room-footer">Orientierungswerte, keine medizinische Bewertung</span>
-          </div>
-          <div class="live-analysis-grid">
-            <div class="live-analysis-card"><span class="label">Temperatur</span><span class="value" id="liveAnalysisTemp">--</span><span class="detail" id="liveAnalysisTempDetail">Behaglich: 18–24 °C</span></div>
-            <div class="live-analysis-card"><span class="label">Luftfeuchtigkeit</span><span class="value" id="liveAnalysisHumidity">--</span><span class="detail" id="liveAnalysisHumidityDetail">Komfort: 40–60 %</span></div>
-            <div class="live-analysis-card"><span class="label">CO₂</span><span class="value" id="liveAnalysisCO2">--</span><span class="detail" id="liveAnalysisCO2Detail">Frische Luft: unter 800 ppm</span></div>
-            <div class="live-analysis-card index"><span class="label">Raumklima-Index</span><span class="value" id="liveAnalysisIndex">-- / 100</span><div class="live-index-meter"><span id="liveAnalysisMeter"></span></div><span class="detail" id="liveAnalysisIndexDetail">Wird aus verfügbaren Messwerten berechnet</span></div>
-            <div class="live-analysis-summary" id="liveAnalysisSummary">Innenraumdaten auf der Temperaturseite entsperren, um die Übersicht anzuzeigen.</div>
-          </div>
-          <div class="live-page-footer"><span id="liveAnalysisUpdated">Letzte verfügbare Messwerte</span><span>Komfort-Index nach Temperatur, Feuchte und CO₂</span></div>
-          <div class="live-page-lock" id="liveAnalysisLock">Bitte zuerst auf der Temperaturseite die Innenraumdaten entsperren.</div>
-        </section>
-      </div>
+  <div class="live-selection" aria-label="Karussell-Inhalte wählen">
+    <div class="live-selection-group" id="liveModuleChoices">
+      <span class="live-selection-label">Räume</span>
+    </div>
+    <div class="live-selection-group" id="livePageChoices">
+      <span class="live-selection-label">Seiten</span>
     </div>
   </div>
-  <div class="live-nav" aria-label="Karussell-Seiten">
-    <button class="live-dot active" type="button" aria-label="Temperatur" aria-pressed="true" onclick="showLivePage(0)">T</button>
-    <button class="live-dot" type="button" aria-label="Kohlendioxid" aria-pressed="false" onclick="showLivePage(1)">CO₂</button>
-    <button class="live-dot" type="button" aria-label="Luftfeuchtigkeit" aria-pressed="false" onclick="showLivePage(2)">RH</button>
-    <button class="live-dot" type="button" aria-label="Raumklima-Übersicht" aria-pressed="false" onclick="showLivePage(3)">Klima</button>
+  <div class="live-stage" id="liveStage">
+    <div class="live-track" id="liveTrack"></div>
   </div>
+  <div class="live-nav" id="liveNav" aria-label="Karussell-Seiten"></div>
 </section>
 <div class="layout" id="app-data" hidden>
   <div class="sidebar">
@@ -459,13 +388,79 @@ const PAYLOAD = {"sensors":["CO2","Humidity","Noise","Pressure","Rain","Temperat
 let livePage = 0;
 let liveIntervalMs = 15000;
 let liveTimer = null;
-let liveRoomChart = null;
-const LIVE_ROOM_MODULE = 'Wohnzimmer';
+let livePages = [];
+let liveCharts = {};
+const LIVE_SETTINGS_KEY = 'netatmo-live-carousel-v1';
 const LIVE_ROOM_WINDOW_MS = 24 * 60 * 60 * 1000;
+const LIVE_PAGE_DEFS = [
+  { key: 'temperature', label: 'Temperatur', title: 'Temperaturverlauf', short: 'T' },
+  { key: 'co2', label: 'CO₂', title: 'CO₂ · Luftqualität', short: 'CO₂' },
+  { key: 'humidity', label: 'Luftfeuchtigkeit', title: 'Relative Luftfeuchtigkeit', short: 'RH' },
+  { key: 'analysis', label: 'Raumklima-Übersicht', title: 'Raumklima im Überblick', short: 'Klima' },
+];
+
+function isLiveRoomSensor(sensor) {
+  return !/temp|temperatur|co.?2|humidity|hum|feucht|rain|regen|wind|gust|uv|solar|sunshine|battery|signal|outdoor|outside|aussen|außen/i.test(sensor);
+}
+
+function liveSensorLabel(sensor) {
+  if (/^noise$/i.test(sensor)) return 'Geräusch';
+  if (/^pressure$/i.test(sensor)) return 'Luftdruck';
+  return sensor;
+}
+
+function loadLiveSettings() {
+  const rooms = [...new Set([
+    ...(PAYLOAD.locked_modules || []),
+    ...PAYLOAD.modules.filter(module => /wohnzimmer|schlafzimmer|zimmer/i.test(module)),
+  ])];
+  const defaults = {
+    rooms,
+    pages: {
+      temperature: true,
+      co2: true,
+      humidity: true,
+      analysis: true,
+      sensors: PAYLOAD.sensors.filter(isLiveRoomSensor),
+    },
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(LIVE_SETTINGS_KEY) || 'null');
+    if (!saved || !Array.isArray(saved.rooms) || !saved.pages) return defaults;
+    return {
+      rooms: saved.rooms.filter(room => rooms.includes(room)),
+      pages: {
+        ...defaults.pages,
+        ...Object.fromEntries(Object.entries(saved.pages).filter(
+          ([key]) => key !== 'sensors')),
+        sensors: Array.isArray(saved.pages.sensors)
+          ? saved.pages.sensors.filter(sensor =>
+            PAYLOAD.sensors.includes(sensor) && isLiveRoomSensor(sensor))
+          : defaults.pages.sensors,
+      },
+    };
+  } catch (error) {
+    console.warn('Live-Karussell-Einstellungen konnten nicht geladen werden:', error);
+    return defaults;
+  }
+}
+
+let liveSettings = loadLiveSettings();
+
+function saveLiveSettings() {
+  try {
+    localStorage.setItem(LIVE_SETTINGS_KEY, JSON.stringify(liveSettings));
+  } catch (error) {
+    console.warn('Live-Karussell-Einstellungen konnten nicht gespeichert werden:', error);
+    document.getElementById('liveStatus').textContent =
+      'Einstellungen konnten nicht dauerhaft gespeichert werden.';
+  }
+}
 
 function updateLivePage() {
-  document.getElementById('liveTrack').style.transform =
-    `translateX(-${livePage * 100}%)`;
+  const track = document.getElementById('liveTrack');
+  track.style.transform = livePages.length
+    ? `translateX(-${livePage * 100}%)` : 'translateX(0)';
   document.querySelectorAll('.live-dot').forEach((button, index) => {
     const active = index === livePage;
     button.classList.toggle('active', active);
@@ -474,14 +469,206 @@ function updateLivePage() {
 }
 
 function showLivePage(index) {
-  livePage = (index + 4) % 4;
+  if (!livePages.length) return;
+  livePage = (index + livePages.length) % livePages.length;
   updateLivePage();
   scheduleLiveAdvance();
 }
 
 function scheduleLiveAdvance() {
   clearTimeout(liveTimer);
+  if (!livePages.length) return;
   liveTimer = setTimeout(() => showLivePage(livePage + 1), liveIntervalMs);
+}
+
+function liveChoice(label, group, value, checked) {
+  const wrapper = document.createElement('label');
+  wrapper.className = 'live-choice';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.dataset.liveGroup = group;
+  input.value = value;
+  input.checked = checked;
+  const text = document.createElement('span');
+  text.textContent = label;
+  wrapper.append(input, text);
+  return wrapper;
+}
+
+function buildLiveSelectors() {
+  const modules = document.getElementById('liveModuleChoices');
+  const pages = document.getElementById('livePageChoices');
+  modules.replaceChildren(modules.querySelector('.live-selection-label'));
+  pages.replaceChildren(pages.querySelector('.live-selection-label'));
+  const roomNames = [...new Set([
+    ...(PAYLOAD.locked_modules || []),
+    ...PAYLOAD.modules.filter(module => /wohnzimmer|schlafzimmer|zimmer/i.test(module)),
+  ])].sort((a, b) => {
+    const order = ['Wohnzimmer', 'Schlafzimmer', 'Zimmer'];
+    return order.indexOf(a) - order.indexOf(b);
+  });
+  roomNames.forEach(room => {
+    modules.appendChild(liveChoice(room, 'room', room, liveSettings.rooms.includes(room)));
+  });
+  LIVE_PAGE_DEFS.forEach(definition => {
+    pages.appendChild(liveChoice(
+      definition.label, 'page', definition.key, Boolean(liveSettings.pages[definition.key])));
+  });
+  PAYLOAD.sensors.forEach(sensor => {
+    if (!isLiveRoomSensor(sensor)) return;
+    pages.appendChild(liveChoice(liveSensorLabel(sensor), 'sensor', sensor,
+      liveSettings.pages.sensors.includes(sensor)));
+  });
+  document.querySelectorAll('.live-choice input').forEach(input => {
+    input.addEventListener('change', () => {
+      if (input.dataset.liveGroup === 'room') {
+        liveSettings.rooms = [...document.querySelectorAll(
+          '.live-choice input[data-live-group="room"]:checked')].map(item => item.value);
+      } else if (input.dataset.liveGroup === 'page') {
+        liveSettings.pages[input.value] = input.checked;
+      } else {
+        const selectedSensors = new Set(liveSettings.pages.sensors);
+        if (input.checked) selectedSensors.add(input.value);
+        else selectedSensors.delete(input.value);
+        liveSettings.pages.sensors = [...selectedSensors];
+      }
+      saveLiveSettings();
+      renderLiveCarousel();
+    });
+  });
+}
+
+function renderLiveCarousel() {
+  const track = document.getElementById('liveTrack');
+  const nav = document.getElementById('liveNav');
+  const current = livePages[livePage];
+  const currentKey = current && `${current.module}|${current.type}|${current.sensor || ''}`;
+  Object.values(liveCharts).forEach(chart => chart.destroy());
+  liveCharts = {};
+  track.replaceChildren();
+  nav.replaceChildren();
+  livePages = [];
+
+  liveSettings.rooms.forEach(module => {
+    const locked = PAYLOAD.locked_modules?.includes(module) &&
+      !PAYLOAD.sensors.some(sensor => PAYLOAD.data[sensor]?.[module]?.length);
+    LIVE_PAGE_DEFS.forEach(definition => {
+      const hasData = definition.key === 'analysis'
+        ? ['temperature', 'humidity', 'co2'].some(type =>
+          getLiveRoomPoints(module, type).length)
+        : getLiveRoomPoints(module, definition.key).length > 0;
+      if (liveSettings.pages[definition.key] && (locked || hasData)) {
+        livePages.push({ module, type: definition.key, label: definition.label });
+      }
+    });
+    liveSettings.pages.sensors.forEach(sensor => {
+      if (PAYLOAD.data[sensor]?.[module]?.length || locked) {
+        livePages.push({ module, type: 'sensor', sensor, label: liveSensorLabel(sensor) });
+      }
+    });
+  });
+
+  if (!livePages.length) {
+    const empty = document.createElement('div');
+    empty.className = 'live-slide';
+    empty.textContent = 'Bitte mindestens einen Raum und eine Seite auswählen.';
+    track.appendChild(empty);
+    document.getElementById('liveStatus').textContent =
+      'Keine Karussellseiten ausgewählt.';
+    clearTimeout(liveTimer);
+    return;
+  }
+
+  livePages.forEach((page, index) => {
+    const slide = document.createElement('article');
+    slide.id = `live-slide-${index}`;
+    slide.className = `live-slide ${page.type === 'temperature' ? 'live-room-slide' : 'live-page-slide'}`;
+    slide.setAttribute('aria-label', `${page.module} · ${page.label}`);
+    slide.dataset.module = page.module;
+    slide.dataset.type = page.type;
+    if (page.sensor) slide.dataset.sensor = page.sensor;
+    slide.innerHTML = liveSlideMarkup(page, index);
+    slide.querySelector('.live-room-kicker').textContent = page.module;
+    const unlockButton = slide.querySelector('[data-live-unlock]');
+    if (unlockButton) {
+      unlockButton.addEventListener('click', () => unlockIndoor(
+        unlockButton.closest('[data-live-lock]').querySelector('[data-live-password]').id,
+        unlockButton.closest('[data-live-lock]').querySelector('[data-live-lock-message]').id));
+      const password = slide.querySelector('[data-live-password]');
+      const message = slide.querySelector('[data-live-lock-message]');
+      password.id = `live-password-${index}`;
+      message.id = `live-lock-message-${index}`;
+      password.addEventListener('keydown', event => {
+        if (event.key === 'Enter') unlockButton.click();
+      });
+    }
+    track.appendChild(slide);
+
+    const button = document.createElement('button');
+    button.className = `live-dot${index === 0 ? ' active' : ''}`;
+    button.type = 'button';
+    button.setAttribute('aria-label', `${page.module} · ${page.label}`);
+    button.setAttribute('aria-pressed', String(index === 0));
+    const roomShort = page.module === 'Wohnzimmer' ? 'W'
+      : page.module === 'Schlafzimmer' ? 'S' : 'Z';
+    const pageShort = LIVE_PAGE_DEFS.find(definition =>
+      definition.key === page.type)?.short ||
+      (page.sensor === 'Noise' ? 'dB'
+        : page.sensor === 'Pressure' ? 'hPa' : liveSensorLabel(page.sensor));
+    button.textContent = `${roomShort} ${pageShort}`;
+    button.addEventListener('click', () => showLivePage(index));
+    nav.appendChild(button);
+  });
+  const restoredIndex = currentKey
+    ? livePages.findIndex(page =>
+      `${page.module}|${page.type}|${page.sensor || ''}` === currentKey)
+    : -1;
+  livePage = restoredIndex >= 0 ? restoredIndex : Math.min(livePage, livePages.length - 1);
+  updateLivePage();
+  refreshLiveRoomTemperature();
+  scheduleLiveAdvance();
+  document.getElementById('liveStatus').textContent =
+    `${livePages.length} Karussellseiten · Wechsel alle ${liveIntervalMs / 1000} Sekunden`;
+}
+
+function escapeLiveHtml(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]);
+}
+
+function liveSlideMarkup(page, index) {
+  const title = page.type === 'sensor' ? escapeLiveHtml(liveSensorLabel(page.sensor))
+    : LIVE_PAGE_DEFS.find(definition => definition.key === page.type).title;
+  const kicker = `<div class="live-room-kicker"></div><h2>${title}</h2>`;
+  const chartId = `live-chart-${index}`;
+  if (page.type === 'analysis') {
+    return `<section class="live-page-panel">
+      <div class="live-page-head"><div>${kicker}</div><span class="live-room-footer">Orientierungswerte · keine medizinische Bewertung</span></div>
+      <div class="live-analysis-grid">
+        <div class="live-analysis-card"><span class="label">Temperatur</span><span class="value" data-metric="temperature">—</span><span class="detail" data-detail="temperature"></span></div>
+        <div class="live-analysis-card"><span class="label">Luftfeuchtigkeit</span><span class="value" data-metric="humidity">—</span><span class="detail" data-detail="humidity"></span></div>
+        <div class="live-analysis-card"><span class="label">CO₂</span><span class="value" data-metric="co2">—</span><span class="detail" data-detail="co2"></span></div>
+        <div class="live-analysis-card index"><span class="label">Raumklima-Index</span><span class="value" data-metric="score">— / 100</span><div class="live-index-meter"><span data-metric="meter"></span></div><span class="detail" data-detail="score"></span></div>
+        <div class="live-analysis-summary" data-metric="summary">Innenraumdaten entsperren, um die Übersicht anzuzeigen.</div>
+      </div>
+      <div class="live-page-footer"><span data-metric="updated"></span><span>Index aus Temperatur, Feuchte und CO₂</span></div>
+      <div class="live-page-lock" data-live-lock>Bitte zuerst auf einer Temperaturseite die Innenraumdaten entsperren.</div>
+    </section>`;
+  }
+  const unit = page.type === 'temperature' ? '°C'
+    : page.type === 'co2' ? 'ppm'
+      : page.type === 'humidity' ? '%' : escapeLiveHtml(PAYLOAD.units[page.sensor] || '');
+  const passwordForm = page.type === 'temperature'
+    ? `<div class="live-room-lock-row"><input type="password" autocomplete="current-password" placeholder="Innenraum-Passwort" data-live-password><button type="button" data-live-unlock>Entsperren</button></div><div class="live-room-lock-msg" data-live-lock-message role="status" aria-live="polite"></div>`
+    : '';
+  return `<section class="live-page-panel">
+    <div class="live-page-head"><div>${kicker}</div><div class="live-page-value"><span data-live-value>—</span><small>${unit}</small></div></div>
+    <div class="live-page-chart-wrap"><canvas id="${chartId}" aria-label="${page.module} ${title} Verlauf"></canvas>
+      <div class="live-page-lock" data-live-lock>${passwordForm || 'Bitte zuerst auf einer Temperaturseite die Innenraumdaten entsperren.'}</div>
+    </div>
+    <div class="live-page-footer"><span data-live-updated></span><span data-live-guidance></span></div>
+  </section>`;
 }
 
 function applyLiveInterval() {
@@ -687,8 +874,21 @@ async function unlockIndoor(inputId = 'indoorPwInput', messageId = 'indoorLockMs
   const enc = PAYLOAD.locked_enc;
   const msgEl = document.getElementById(messageId);
   const pwInput = document.getElementById(inputId);
-  const pw = pwInput.value;
-  if (!enc || !pw) return;
+  const pw = pwInput?.value || '';
+  if (!enc) {
+    if (msgEl) msgEl.textContent =
+      'Innenraumdaten sind in diesem Export nicht enthalten. Bitte mit eingerichtetem Innenraum-Passwort neu exportieren.';
+    return;
+  }
+  if (!pw) {
+    if (msgEl) {
+      msgEl.classList.add('err');
+      msgEl.textContent = 'Bitte das Innenraum-Passwort eingeben.';
+    }
+    pwInput?.focus();
+    return;
+  }
+  if (!msgEl || !pwInput) return;
   msgEl.classList.remove('err', 'ok');
   msgEl.textContent = 'Prüfe Passwort…';
   try {
@@ -712,12 +912,20 @@ async function unlockIndoor(inputId = 'indoorPwInput', messageId = 'indoorLockMs
       PAYLOAD.data[sensor] = PAYLOAD.data[sensor] || {};
       Object.assign(PAYLOAD.data[sensor], obj[sensor]);
     });
+    Object.values(obj).forEach(modules => {
+      Object.keys(modules).forEach(module => {
+        if (!PAYLOAD.modules.includes(module)) PAYLOAD.modules.push(module);
+        selModules.add(module);
+      });
+    });
     FLAT = buildFlat();
     pwInput.value = '';
     msgEl.classList.add('ok');
     msgEl.textContent = '✅ Innenraum-Daten entsperrt.';
+    buildLiveSelectors();
+    renderLiveCarousel();
+    buildChips('moduleChips', PAYLOAD.modules, selModules);
     applyFilters();
-    refreshLiveRoomTemperature();
   } catch (e) {
     msgEl.classList.add('err');
     msgEl.textContent = '❌ Fehler beim Entschlüsseln: ' + e.message;
@@ -1102,6 +1310,231 @@ function formatLiveRoomTime(ts) {
   return new Date(ts).toLocaleString('de-DE', {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
+}
+
+function getLiveRoomPoints(module, type, sensorName) {
+  const pattern = type === 'temperature' ? /temp|temperatur/i
+    : type === 'co2' ? /co.?2/i
+      : type === 'humidity' ? /humidity|hum|feucht/i : null;
+  const sensor = sensorName || PAYLOAD.sensors.find(name => {
+    const unit = PAYLOAD.units[name] || '';
+    return pattern?.test(name) ||
+      (type === 'temperature' && /°\s*C/i.test(unit)) ||
+      (type === 'co2' && /ppm/i.test(unit)) ||
+      (type === 'humidity' && unit.trim() === '%');
+  });
+  return sensor ? (PAYLOAD.data[sensor]?.[module] || []) : [];
+}
+
+function liveMetricStatus(type, value) {
+  if (type === 'temperature') return value < 18 ? 'Unter dem Behaglichkeitsbereich · 18 °C'
+    : value <= 24 ? 'Im Behaglichkeitsbereich · 18–24 °C'
+      : 'Über dem Behaglichkeitsbereich · 24 °C';
+  if (type === 'co2') return value < 800 ? 'Frische Luft · unter 800 ppm'
+    : value < 1000 ? 'Gut · unter 1.000 ppm'
+      : value < 1400 ? 'Lüften empfohlen'
+        : 'Hoher Wert · Lüften empfohlen';
+  if (type === 'humidity') return value < 40 ? 'Eher trocken · Ziel 40–60 %'
+    : value <= 60 ? 'Im Komfortbereich · 40–60 %'
+      : 'Eher feucht · Ziel 40–60 %';
+  return '';
+}
+
+function updateLiveSlideChart(slide, points, page) {
+  const index = livePages.indexOf(page);
+  const canvas = slide.querySelector('canvas');
+  if (!canvas || !points.length) return;
+  const now = points[points.length - 1][0];
+  const visible = points.filter(([ts]) => ts >= now - LIVE_ROOM_WINDOW_MS);
+  const data = visible.map(([x, y]) => ({ x, y }));
+  const value = Number(points[points.length - 1][1]);
+  slide.querySelector('[data-live-value]').textContent = value.toLocaleString(
+    'de-DE', { maximumFractionDigits: page.type === 'temperature' ? 1 : 0 });
+  slide.querySelector('[data-live-updated]').textContent =
+    `Letzte Messung · ${formatLiveRoomTime(now)}`;
+  const guidance = slide.querySelector('[data-live-guidance]');
+  guidance.textContent = liveMetricStatus(page.type, value);
+  const thresholds = page.type === 'temperature'
+    ? [{ value: 20, label: '20 °C', color: '#d8bd83' }]
+    : page.type === 'co2'
+      ? [
+        { value: 800, label: 'Frische Luft · 800 ppm', color: '#78b99b' },
+        { value: 1000, label: 'Lüften · 1.000 ppm', color: '#d8bd83' },
+        { value: 1400, label: 'Hoch · 1.400 ppm', color: '#c78278' },
+      ]
+      : page.type === 'humidity'
+        ? [
+          { value: 40, label: 'Komfortbereich · 40 %', color: '#789d8b' },
+          { value: 60, label: 'Komfortbereich · 60 %', color: '#789d8b' },
+        ] : [];
+  const datasets = [{
+    label: page.label,
+    data,
+    borderColor: page.type === 'temperature' ? '#78bce4'
+      : page.type === 'co2' ? '#9f9bd8'
+        : page.type === 'humidity' ? '#78b99b' : '#78bce4',
+    backgroundColor: page.type === 'temperature'
+      ? 'rgba(77, 145, 190, .14)' : 'rgba(77, 145, 190, .08)',
+    borderWidth: 3,
+    pointRadius: 0,
+    pointHitRadius: 12,
+    tension: .2,
+    fill: page.type === 'temperature',
+  }, ...thresholds.map(threshold => ({
+    label: threshold.label,
+    data: [{ x: data[0].x, y: threshold.value }, { x: data[data.length - 1].x, y: threshold.value }],
+    borderColor: threshold.color,
+    borderWidth: 2,
+    borderDash: [8, 7],
+    pointRadius: 0,
+    fill: false,
+  }))];
+  const unit = page.type === 'temperature' ? ' °C'
+    : page.type === 'co2' ? ' ppm'
+      : page.type === 'humidity' ? ' %' : ` ${PAYLOAD.units[page.sensor] || ''}`;
+  const config = {
+    type: 'line',
+    data: { datasets },
+    options: {
+      animation: { duration: 350 },
+      maintainAspectRatio: false,
+      normalized: true,
+      parsing: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { labels: { color: '#91abc4', usePointStyle: true, boxWidth: 10, padding: 18 } },
+        tooltip: {
+          backgroundColor: '#10253b',
+          borderColor: '#294763',
+          borderWidth: 1,
+          titleColor: '#b7d8ee',
+          bodyColor: '#a9c9e8',
+          callbacks: {
+            label: context => ` ${context.dataset.label}: ${context.parsed.y.toLocaleString('de-DE', { maximumFractionDigits: 1 })}${unit}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'time', min: now - LIVE_ROOM_WINDOW_MS, max: now,
+          grid: { color: 'rgba(101, 139, 173, .12)' },
+          border: { color: '#294763' },
+          ticks: { color: '#7898b6', maxTicksLimit: 8, maxRotation: 0 },
+        },
+        y: {
+          ...(page.type === 'humidity' ? { min: 0, max: 100 } : {}),
+          ...(page.type === 'co2' ? { min: 350 } : {}),
+          suggestedMin: page.type === 'temperature'
+            ? Math.min(16, ...visible.map(([, point]) => point - 1)) : undefined,
+          suggestedMax: page.type === 'temperature'
+            ? Math.max(24, ...visible.map(([, point]) => point + 1)) : undefined,
+          grid: {
+            color: context => thresholds.some(threshold =>
+              Math.abs(context.tick.value - threshold.value) < .001)
+              ? 'rgba(216, 189, 131, .28)' : 'rgba(101, 139, 173, .12)',
+          },
+          border: { color: '#294763' },
+          ticks: {
+            color: '#7898b6',
+            callback: tick => `${Number(tick).toLocaleString('de-DE', { maximumFractionDigits: 0 })}${unit}`,
+          },
+        },
+      },
+    },
+  };
+  if (liveCharts[index]) {
+    liveCharts[index].data = config.data;
+    liveCharts[index].options = config.options;
+    liveCharts[index].update();
+  } else {
+    liveCharts[index] = new Chart(canvas.getContext('2d'), config);
+  }
+}
+
+function updateLiveAnalysis(slide, module) {
+  const temperature = getLiveRoomPoints(module, 'temperature');
+  const humidity = getLiveRoomPoints(module, 'humidity');
+  const co2 = getLiveRoomPoints(module, 'co2');
+  const latest = points => points.length ? Number(points[points.length - 1][1]) : null;
+  const t = latest(temperature), rh = latest(humidity), c = latest(co2);
+  const score = comfortScoreInd(t, rh, c);
+  const setMetric = (name, value, unit, digits) => {
+    slide.querySelector(`[data-metric="${name}"]`).textContent =
+      value === null ? '—' : `${value.toLocaleString('de-DE', {
+        minimumFractionDigits: digits, maximumFractionDigits: digits,
+      })}${unit}`;
+  };
+  setMetric('temperature', t, ' °C', 1);
+  setMetric('humidity', rh, ' %', 0);
+  setMetric('co2', c, ' ppm', 0);
+  setMetric('score', score === null ? null : Math.round(score), ' / 100', 0);
+  slide.querySelector('[data-metric="meter"]').style.width =
+    score === null ? '0%' : `${Math.max(0, Math.min(100, score))}%`;
+  slide.querySelector('[data-metric="meter"]').style.background =
+    score === null ? '#547d9d' : score >= 70 ? '#78b99b' : score >= 40 ? '#d8bd83' : '#c78278';
+  slide.querySelector('[data-detail="temperature"]').textContent =
+    t === null ? 'Kein Sensor' : liveMetricStatus('temperature', t);
+  slide.querySelector('[data-detail="humidity"]').textContent =
+    rh === null ? 'Kein Sensor' : liveMetricStatus('humidity', rh);
+  slide.querySelector('[data-detail="co2"]').textContent =
+    c === null ? 'Kein Sensor' : liveMetricStatus('co2', c);
+  slide.querySelector('[data-detail="score"]').textContent =
+    score === null ? 'Noch zu wenige Messwerte für einen Index'
+      : score >= 70 ? 'Günstige Kombination der Messwerte'
+        : score >= 40 ? 'Einzelne Werte außerhalb des Orientierungsbereichs'
+          : 'Mehrere Werte deutlich außerhalb des Orientierungsbereichs';
+  const summary = c !== null && c >= 1000 ? 'CO₂ ist erhöht. Kurzes Stoßlüften kann die Raumluft verbessern.'
+    : rh !== null && rh > 60 ? 'Die Luftfeuchtigkeit ist erhöht.'
+      : rh !== null && rh < 40 ? 'Die Luft ist eher trocken.'
+        : t !== null && (t < 18 || t > 24) ? 'Die Temperatur liegt außerhalb des Behaglichkeitsbereichs von 18–24 °C.'
+          : score === null ? 'Noch nicht genügend Innenraum-Messwerte für eine Übersicht.'
+            : score >= 70 ? 'Die verfügbaren Messwerte liegen überwiegend im Orientierungsbereich.'
+              : 'Prüfen Sie die einzelnen Messwerte und deren Verlauf.';
+  slide.querySelector('[data-metric="summary"]').textContent = summary;
+  const times = [temperature, humidity, co2].filter(points => points.length)
+    .map(points => points[points.length - 1][0]);
+  slide.querySelector('[data-metric="updated"]').textContent = times.length
+    ? `Letzte Messung · ${formatLiveRoomTime(Math.max(...times))}` : 'Keine Messwerte verfügbar';
+}
+
+function refreshLiveRoomTemperature() {
+  livePages.forEach((page, index) => {
+    const slide = document.getElementById(`live-slide-${index}`);
+    if (!slide) return;
+    const lock = slide.querySelector('[data-live-lock]');
+    if (page.type === 'analysis') {
+      const series = ['temperature', 'humidity', 'co2']
+        .map(type => getLiveRoomPoints(page.module, type));
+      const available = series.some(points => points.length);
+      const isLocked = PAYLOAD.locked_modules?.includes(page.module) && !available;
+      lock.hidden = !isLocked;
+      if (isLocked && !PAYLOAD.locked_enc) {
+        lock.textContent = 'Innenraumdaten sind in diesem Export nicht enthalten. Bitte mit eingerichtetem Innenraum-Passwort neu exportieren.';
+      }
+      updateLiveAnalysis(slide, page.module);
+      return;
+    }
+    const points = getLiveRoomPoints(page.module, page.type, page.sensor);
+    const isLocked = PAYLOAD.locked_modules?.includes(page.module) && !points.length;
+    lock.hidden = !isLocked && Boolean(points.length);
+    if (points.length) {
+      updateLiveSlideChart(slide, points, page);
+    } else {
+      slide.querySelector('[data-live-value]').textContent = '—';
+      slide.querySelector('[data-live-updated]').textContent =
+        isLocked ? 'Innenraumdaten gesperrt' : 'Für dieses Modul keine Messwerte verfügbar';
+      slide.querySelector('[data-live-guidance]').textContent = '';
+      if (lock && !isLocked) {
+        lock.textContent = 'Für dieses Modul sind in den Daten keine Messwerte dieser Art enthalten.';
+      } else if (lock && !PAYLOAD.locked_enc) {
+        lock.textContent = 'Innenraumdaten sind in diesem Export nicht enthalten. Bitte mit eingerichtetem Innenraum-Passwort neu exportieren.';
+      }
+    }
+  });
+}
+
+function refreshLiveRoomMetrics() {
+  refreshLiveRoomTemperature();
 }
 
 /* ── Get date bounds from data ── */
@@ -4385,7 +4818,7 @@ function renderIndoor(raw) {
       <div id="indComfortHM" style="overflow-x:auto;margin-top:10px;"></div>
       <div class="chart-hint">Ø Wohlfühl-Score je Wochentag und Stunde. Grün = ideal, Gelb = mäßig, Rot = unbehaglich. Zeigt typische Schlaf-, Arbeits- und Freizeitmuster.</div>`;
     container.appendChild(card);
-    const grid7=Array.from({length:7},()=>Array.from({length:24},()=>[])); 
+    const grid7=Array.from({length:7},()=>Array.from({length:24},()=>[]));
     derived.forEach(d=>{if(d.cs===null) return; const dt=new Date(d.ts); grid7[(dt.getDay()+6)%7][dt.getHours()].push(d.cs);});
     const mn7=grid7.map(r=>r.map(vs=>vs.length?Math.round(vs.reduce((a,b)=>a+b,0)/vs.length):null));
     const dow7=['Mo','Di','Mi','Do','Fr','Sa','So'];
@@ -4466,8 +4899,8 @@ function resetFilters() {
 /* ── Init ── */
 window.addEventListener('load', () => {
   document.getElementById('liveInterval').value = '15';
-  scheduleLiveAdvance();
-  refreshLiveRoomTemperature();
+  buildLiveSelectors();
+  renderLiveCarousel();
   const bounds = getDateBounds();
   document.getElementById('dateFrom').value = bounds.min;
   document.getElementById('dateTo').value   = bounds.max;
