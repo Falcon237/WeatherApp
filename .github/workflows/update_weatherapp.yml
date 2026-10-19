@@ -36,6 +36,10 @@ jobs:
           NETATMO_REFRESH_TOKEN: ${{ secrets.NETATMO_REFRESH_TOKEN }}
           NETATMO_VIEWER_PASSWORD: ${{ secrets.NETATMO_VIEWER_PASSWORD }}
         run: |
+          set -euo pipefail
+          : "${NETATMO_CLIENT_ID:?GitHub Actions secret NETATMO_CLIENT_ID is missing}"
+          : "${NETATMO_CLIENT_SECRET:?GitHub Actions secret NETATMO_CLIENT_SECRET is missing}"
+          : "${NETATMO_REFRESH_TOKEN:?GitHub Actions secret NETATMO_REFRESH_TOKEN is missing}"
           # Skript ausführen; letzte Zeile enthält NEW_REFRESH_TOKEN=<wert>
           python fetch_and_export.py | tee /tmp/fetch_output.txt
           NEW_TOKEN=$(grep '^NEW_REFRESH_TOKEN=' /tmp/fetch_output.txt | cut -d= -f2-)
