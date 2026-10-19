@@ -395,7 +395,30 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .live-status { color:var(--muted); font-size:12px; }
   .live-stage { flex:1; min-height:0; overflow:hidden; border:1px solid var(--border); border-radius:14px; background:#111827; }
   .live-track { display:flex; width:100%; height:100%; transition:transform .7s cubic-bezier(.22,.7,.25,1); will-change:transform; }
-  .live-slide { flex:0 0 100%; display:grid; place-items:center; color:#fff; font-size:clamp(8rem,36vw,28rem); font-weight:700; line-height:1; user-select:none; }
+  .live-slide { flex:0 0 100%; display:grid; place-items:center; color:#a9c9e8; font-size:clamp(8rem,36vw,28rem); font-weight:700; line-height:1; user-select:none; }
+  .live-room-slide { display:block; padding:clamp(12px,3vw,40px); font-size:initial; }
+  .live-room-panel { height:100%; min-height:0; display:flex; flex-direction:column; gap:clamp(8px,1.5vh,18px); padding:clamp(16px,3vw,42px); overflow:hidden; border:1px solid #294763; border-radius:18px; background:radial-gradient(ellipse at 78% 8%,#193a58 0,transparent 42%),linear-gradient(145deg,#10253b,#0b1727 72%); box-shadow:0 18px 55px #02081280; }
+  .live-room-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; flex-shrink:0; }
+  .live-room-kicker { color:#82a9cc; font-size:clamp(11px,1.2vw,17px); font-weight:700; letter-spacing:.16em; }
+  .live-room-heading h2 { margin-top:5px; color:#c2d9ef; font-size:clamp(22px,3.4vw,48px); font-weight:500; letter-spacing:.01em; }
+  .live-room-current { display:flex; align-items:baseline; gap:8px; flex-shrink:0; color:#b7d8ee; }
+  .live-room-current span { align-self:center; color:#7898b6; font-size:clamp(10px,1vw,15px); font-weight:700; letter-spacing:.12em; }
+  .live-room-current strong { color:#a8d4ed; font-size:clamp(48px,10vw,138px); font-weight:400; font-variant-numeric:tabular-nums; line-height:.9; }
+  .live-room-current .unit { color:#82a9cc; font-size:clamp(19px,3vw,42px); }
+  .live-room-chart-wrap { flex:1; min-height:100px; position:relative; }
+  .live-room-footer { display:flex; justify-content:space-between; gap:12px; flex-shrink:0; color:#7898b6; font-size:clamp(11px,1vw,15px); }
+  .live-room-target { color:#d8bd83; }
+  .live-room-lock { position:absolute; z-index:2; inset:0; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:14px; padding:24px; border-radius:12px; background:#0b1727ed; text-align:center; }
+  .live-room-lock h3 { color:#c2d9ef; font-size:clamp(20px,3vw,36px); font-weight:500; }
+  .live-room-lock p { max-width:540px; color:#91abc4; font-size:clamp(13px,1.3vw,18px); line-height:1.5; }
+  .live-room-lock-row { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; width:min(100%,480px); }
+  .live-room-lock input { flex:1; min-width:180px; padding:12px 14px; border:1px solid #355777; border-radius:8px; background:#0d1d30; color:#c2d9ef; font-size:16px; }
+  .live-room-lock button { padding:12px 18px; border:1px solid #527fa3; border-radius:8px; background:#183650; color:#c2d9ef; font-size:15px; cursor:pointer; }
+  .live-room-lock-msg { min-height:1.4em; color:#91abc4; font-size:13px; }
+  .live-room-lock-msg.err { color:#e49b8d; }
+  body.live-fullscreen .live-room-slide { padding:clamp(8px,1.5vw,24px); }
+  body.live-fullscreen .live-room-panel { border-radius:0; }
+  body.live-fullscreen .live-room-current strong { font-size:clamp(56px,12vh,150px); }
   .live-nav { display:flex; justify-content:center; align-items:center; gap:8px; }
   .live-nav .live-dot { width:28px; height:28px; padding:0; border-radius:50%; color:var(--muted); }
   .live-nav .live-dot.active { color:#fff; background:var(--accent); border-color:var(--accent); }
@@ -411,6 +434,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .app-tabs { padding:0 12px; }
     .live-view { padding:10px; }
     .live-controls { gap:6px; }
+    .live-room-heading { align-items:flex-start; }
+    .live-room-current { flex-wrap:wrap; justify-content:flex-end; gap:4px; }
+    .live-room-current span { width:100%; text-align:right; }
+    .live-room-footer { font-size:11px; }
   }
 
   /* Sidebar */
@@ -599,14 +626,44 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <section class="live-view" id="app-live" aria-label="Live-Karussell">
   <div class="live-controls">
     <label for="liveInterval">Intervall (Sekunden)</label>
-    <input id="liveInterval" type="number" min="1" max="3600" step="1" value="5">
+    <input id="liveInterval" type="number" min="1" max="3600" step="1" value="15">
     <button type="button" onclick="applyLiveInterval()">Übernehmen</button>
     <button type="button" id="fullscreenButton" onclick="toggleLiveFullscreen()">Vollbild</button>
-    <span class="live-status" id="liveStatus" role="status" aria-live="polite">Wechsel alle 5 Sekunden</span>
+    <span class="live-status" id="liveStatus" role="status" aria-live="polite">Wechsel alle 15 Sekunden</span>
   </div>
   <div class="live-stage" id="liveStage">
     <div class="live-track" id="liveTrack">
-      <div class="live-slide" aria-label="Seite 1">1</div>
+      <div class="live-slide live-room-slide" aria-label="Wohnzimmer Temperatur">
+        <section class="live-room-panel">
+          <div class="live-room-heading">
+            <div>
+              <div class="live-room-kicker">INNENRAUM · WOHNZIMMER</div>
+              <h2>Temperaturverlauf</h2>
+            </div>
+            <div class="live-room-current">
+              <span>LETZTER WERT</span>
+              <strong id="liveRoomCurrent">--.-</strong>
+              <span class="unit">°C</span>
+            </div>
+          </div>
+          <div class="live-room-chart-wrap">
+            <canvas id="liveRoomChart" aria-label="Wohnzimmer-Temperaturverlauf der letzten 24 Stunden"></canvas>
+            <div class="live-room-lock" id="liveRoomLock">
+              <h3 id="liveRoomLockTitle">Wohnzimmerdaten gesperrt</h3>
+              <p id="liveRoomLockDescription">Zum Anzeigen der privaten Innenraum-Temperatur bitte das Innenraum-Passwort eingeben.</p>
+              <div class="live-room-lock-row" id="liveRoomLockForm">
+                <input id="liveIndoorPwInput" type="password" autocomplete="current-password" placeholder="Innenraum-Passwort" onkeydown="if(event.key==='Enter')unlockIndoor('liveIndoorPwInput', 'liveRoomLockMsg')">
+                <button type="button" onclick="unlockIndoor('liveIndoorPwInput', 'liveRoomLockMsg')">Entsperren</button>
+              </div>
+              <div class="live-room-lock-msg" id="liveRoomLockMsg" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+          <div class="live-room-footer">
+            <span id="liveRoomUpdated">Letzte 24 Stunden</span>
+            <span class="live-room-target">Referenzlinie · 20 °C</span>
+          </div>
+        </section>
+      </div>
       <div class="live-slide" aria-label="Seite 2">2</div>
       <div class="live-slide" aria-label="Seite 3">3</div>
       <div class="live-slide" aria-label="Seite 4">4</div>
@@ -688,8 +745,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 const PAYLOAD = __PAYLOAD__;
 
 let livePage = 0;
-let liveIntervalMs = 5000;
+let liveIntervalMs = 15000;
 let liveTimer = null;
+let liveRoomChart = null;
+const LIVE_ROOM_MODULE = 'Wohnzimmer';
+const LIVE_ROOM_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function updateLivePage() {
   document.getElementById('liveTrack').style.transform =
@@ -911,13 +971,13 @@ async function hmacKeystream(keyBytes, nonceBytes, length) {
   return out;
 }
 
-async function unlockIndoor() {
+async function unlockIndoor(inputId = 'indoorPwInput', messageId = 'indoorLockMsg') {
   const enc = PAYLOAD.locked_enc;
-  const msgEl = document.getElementById('indoorLockMsg');
-  const pwInput = document.getElementById('indoorPwInput');
+  const msgEl = document.getElementById(messageId);
+  const pwInput = document.getElementById(inputId);
   const pw = pwInput.value;
   if (!enc || !pw) return;
-  msgEl.className = 'lock-msg';
+  msgEl.classList.remove('err', 'ok');
   msgEl.textContent = 'Prüfe Passwort…';
   try {
     const key = await deriveLockKey(pw, enc.salt, enc.iterations);
@@ -928,7 +988,7 @@ async function unlockIndoor() {
     macMsg.set(ciphertext, nonce.length);
     const computedMac = await hmacRaw(key, macMsg);
     if (!bytesEqual(computedMac, b64ToBytes(enc.mac))) {
-      msgEl.className = 'lock-msg err';
+      msgEl.classList.add('err');
       msgEl.textContent = '❌ Falsches Passwort.';
       return;
     }
@@ -942,12 +1002,139 @@ async function unlockIndoor() {
     });
     FLAT = buildFlat();
     pwInput.value = '';
-    msgEl.className = 'lock-msg ok';
+    msgEl.classList.add('ok');
     msgEl.textContent = '✅ Innenraum-Daten entsperrt.';
     applyFilters();
+    refreshLiveRoomTemperature();
   } catch (e) {
-    msgEl.className = 'lock-msg err';
+    msgEl.classList.add('err');
     msgEl.textContent = '❌ Fehler beim Entschlüsseln: ' + e.message;
+  }
+}
+
+function refreshLiveRoomTemperature() {
+  const lock = document.getElementById('liveRoomLock');
+  const title = document.getElementById('liveRoomLockTitle');
+  const description = document.getElementById('liveRoomLockDescription');
+  const form = document.getElementById('liveRoomLockForm');
+  const current = document.getElementById('liveRoomCurrent');
+  const module = PAYLOAD.modules.find(
+    name => name.toLocaleLowerCase('de-DE') === LIVE_ROOM_MODULE.toLocaleLowerCase('de-DE'));
+  const sensor = PAYLOAD.sensors.find(name =>
+    /^(temperature|temperatur)$/i.test(name) ||
+    /°\s*C/i.test(PAYLOAD.units[name] || ''));
+  const points = sensor && module && PAYLOAD.data[sensor]?.[module];
+
+  if (!points?.length) {
+    if (PAYLOAD.locked_modules?.includes(LIVE_ROOM_MODULE) && !PAYLOAD.locked_enc) {
+      title.textContent = 'Wohnzimmerdaten nicht im Export';
+      description.textContent = 'Bitte die GitHub-Pages-Datei mit eingerichtetem Innenraum-Passwort erneut exportieren.';
+      form.hidden = true;
+    } else {
+      title.textContent = 'Wohnzimmerdaten gesperrt';
+      description.textContent = 'Zum Anzeigen der privaten Innenraum-Temperatur bitte das Innenraum-Passwort eingeben.';
+      form.hidden = !PAYLOAD.locked_enc;
+    }
+    lock.hidden = false;
+    return;
+  }
+
+  lock.hidden = true;
+  const now = points[points.length - 1][0];
+  const visiblePoints = points.filter(([ts]) => ts >= now - LIVE_ROOM_WINDOW_MS);
+  const chartPoints = visiblePoints.map(([x, y]) => ({ x, y }));
+  current.textContent = Number(points[points.length - 1][1]).toLocaleString(
+    'de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  document.getElementById('liveRoomUpdated').textContent =
+    `Letzte Messung · ${new Date(now).toLocaleString('de-DE', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    })}`;
+  const targetPoints = chartPoints.length > 1
+    ? [{ x: chartPoints[0].x, y: 20 }, { x: chartPoints[chartPoints.length - 1].x, y: 20 }]
+    : [];
+  const values = visiblePoints.map(([, value]) => value);
+  const config = {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Wohnzimmer',
+          data: chartPoints,
+          borderColor: '#78bce4',
+          backgroundColor: 'rgba(77, 145, 190, .16)',
+          borderWidth: 3,
+          pointRadius: 0,
+          pointHitRadius: 12,
+          tension: .24,
+          fill: true,
+        },
+        {
+          label: '20 °C',
+          data: targetPoints,
+          borderColor: '#d8bd83',
+          borderWidth: 2,
+          borderDash: [9, 7],
+          pointRadius: 0,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      animation: { duration: 650 },
+      maintainAspectRatio: false,
+      normalized: true,
+      parsing: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: '#91abc4', usePointStyle: true, boxWidth: 10, padding: 18 },
+        },
+        tooltip: {
+          backgroundColor: '#10253b',
+          borderColor: '#294763',
+          borderWidth: 1,
+          titleColor: '#b7d8ee',
+          bodyColor: '#a9c9e8',
+          callbacks: {
+            label: context => ` ${context.dataset.label}: ${context.parsed.y.toLocaleString('de-DE', { maximumFractionDigits: 1 })} °C`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'time',
+          min: now - LIVE_ROOM_WINDOW_MS,
+          max: now,
+          grid: { color: 'rgba(101, 139, 173, .12)' },
+          border: { color: '#294763' },
+          ticks: { color: '#7898b6', maxTicksLimit: 8, maxRotation: 0 },
+        },
+        y: {
+          suggestedMin: Math.min(16, ...values.map(value => value - 1)),
+          suggestedMax: Math.max(24, ...values.map(value => value + 1)),
+          grid: {
+            color: context => Math.abs(context.tick.value - 20) < .001
+              ? 'rgba(216, 189, 131, .32)'
+              : 'rgba(101, 139, 173, .12)',
+          },
+          border: { color: '#294763' },
+          ticks: {
+            color: '#7898b6',
+            callback: value => `${Number(value).toLocaleString('de-DE', { maximumFractionDigits: 0 })}°`,
+          },
+        },
+      },
+    },
+  };
+
+  if (liveRoomChart) {
+    liveRoomChart.data = config.data;
+    liveRoomChart.options = config.options;
+    liveRoomChart.update();
+  } else {
+    liveRoomChart = new Chart(
+      document.getElementById('liveRoomChart').getContext('2d'), config);
   }
 }
 
@@ -4312,7 +4499,9 @@ function resetFilters() {
 
 /* ── Init ── */
 window.addEventListener('load', () => {
+  document.getElementById('liveInterval').value = '15';
   scheduleLiveAdvance();
+  refreshLiveRoomTemperature();
   const bounds = getDateBounds();
   document.getElementById('dateFrom').value = bounds.min;
   document.getElementById('dateTo').value   = bounds.max;

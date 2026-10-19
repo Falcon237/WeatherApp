@@ -26,6 +26,12 @@ https://<github-user>.github.io/<repository-name>/
 
 Diesen Link kannst du versenden. Die Empfaenger sehen direkt die geladene App, nicht die Repository-Ansicht.
 
+Der Live-Tab startet mit dem Wohnzimmer-Temperaturverlauf der letzten 24 Stunden
+und markiert 20 °C. Die Innenraumdaten bleiben verschluesselt; zum Anzeigen
+zuerst das Innenraum-Passwort auf der Live-Seite eingeben. Vollbild blendet
+Bedienelemente aus. Das Wechselintervall ist fuer eine gut lesbare Anzeige auf
+einem Tablet standardmaessig auf 15 Sekunden gesetzt und kann angepasst werden.
+
 ## In dieses Repository veroeffentlichen
 
 Ziel-Repository:
