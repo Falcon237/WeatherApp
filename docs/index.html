@@ -69,6 +69,10 @@
   .live-page-value small { margin-left:5px; color:#82a9cc; font-size:.38em; }
   .live-page-chart-wrap { flex:1; min-height:100px; position:relative; }
   .live-page-chart-wrap canvas { display:block; width:100% !important; height:100% !important; }
+  .live-comparison-values { display:flex; flex-wrap:wrap; gap:8px; flex-shrink:0; }
+  .live-comparison-value { display:flex; flex-direction:column; gap:4px; min-width:110px; padding:8px 12px; border:1px solid #294763; border-left:3px solid var(--room-color,#78bce4); border-radius:8px; background:#0c1c2d; }
+  .live-comparison-value span { color:#91abc4; font-size:clamp(10px,.9vw,13px); }
+  .live-comparison-value strong { color:#c2d9ef; font-size:clamp(17px,2vw,27px); font-weight:500; font-variant-numeric:tabular-nums; }
   .live-page-footer { display:flex; justify-content:space-between; gap:10px; color:#7898b6; font-size:clamp(11px,1vw,15px); flex-shrink:0; }
   .live-analysis-grid { flex:1; min-height:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); gap:clamp(10px,1.8vw,24px); }
   .live-analysis-card { display:flex; flex-direction:column; justify-content:center; gap:8px; min-width:0; padding:clamp(12px,2vw,26px); border:1px solid #294763; border-radius:14px; background:linear-gradient(145deg,#122b42,#0c1c2d); }
@@ -392,6 +396,7 @@ let livePages = [];
 let liveCharts = {};
 const LIVE_SETTINGS_KEY = 'netatmo-live-carousel-v1';
 const LIVE_ROOM_WINDOW_MS = 24 * 60 * 60 * 1000;
+const LIVE_COMPARISON_PREFIX = 'Alle ausgewählten Räume · ';
 const LIVE_PAGE_DEFS = [
   { key: 'temperature', label: 'Temperatur', title: 'Temperaturverlauf', short: 'T' },
   { key: 'co2', label: 'CO₂', title: 'CO₂ · Luftqualität', short: 'CO₂' },
@@ -421,6 +426,12 @@ function loadLiveSettings() {
       co2: true,
       humidity: true,
       analysis: true,
+      compare: [
+        'temperature',
+        'co2',
+        'humidity',
+        ...PAYLOAD.sensors.filter(isLiveRoomSensor).map(sensor => `sensor:${sensor}`),
+      ],
       sensors: PAYLOAD.sensors.filter(isLiveRoomSensor),
     },
   };
@@ -432,7 +443,15 @@ function loadLiveSettings() {
       pages: {
         ...defaults.pages,
         ...Object.fromEntries(Object.entries(saved.pages).filter(
-          ([key]) => key !== 'sensors')),
+          ([key]) => key !== 'sensors' && key !== 'compare')),
+        compare: Array.isArray(saved.pages.compare)
+          ? saved.pages.compare.filter(value =>
+            typeof value === 'string' &&
+            (value === 'temperature' || value === 'co2' || value === 'humidity' ||
+            (value.startsWith('sensor:') &&
+              PAYLOAD.sensors.includes(value.slice('sensor:'.length)) &&
+              isLiveRoomSensor(value.slice('sensor:'.length)))))
+          : defaults.pages.compare,
         sensors: Array.isArray(saved.pages.sensors)
           ? saved.pages.sensors.filter(sensor =>
             PAYLOAD.sensors.includes(sensor) && isLiveRoomSensor(sensor))
@@ -481,6 +500,10 @@ function scheduleLiveAdvance() {
   liveTimer = setTimeout(() => showLivePage(livePage + 1), liveIntervalMs);
 }
 
+function livePageKey(page) {
+  return `${page.module}|${page.type}|${page.metric || ''}|${page.sensor || ''}`;
+}
+
 function liveChoice(label, group, value, checked) {
   const wrapper = document.createElement('label');
   wrapper.className = 'live-choice';
@@ -519,6 +542,20 @@ function buildLiveSelectors() {
     pages.appendChild(liveChoice(liveSensorLabel(sensor), 'sensor', sensor,
       liveSettings.pages.sensors.includes(sensor)));
   });
+  LIVE_PAGE_DEFS.filter(definition => definition.key !== 'analysis').forEach(definition => {
+    pages.appendChild(liveChoice(
+      `${LIVE_COMPARISON_PREFIX}${definition.label}`,
+      'compare',
+      definition.key,
+      liveSettings.pages.compare.includes(definition.key)));
+  });
+  PAYLOAD.sensors.filter(isLiveRoomSensor).forEach(sensor => {
+    pages.appendChild(liveChoice(
+      `${LIVE_COMPARISON_PREFIX}${liveSensorLabel(sensor)}`,
+      'compare',
+      `sensor:${sensor}`,
+      liveSettings.pages.compare.includes(`sensor:${sensor}`)));
+  });
   document.querySelectorAll('.live-choice input').forEach(input => {
     input.addEventListener('change', () => {
       if (input.dataset.liveGroup === 'room') {
@@ -526,6 +563,11 @@ function buildLiveSelectors() {
           '.live-choice input[data-live-group="room"]:checked')].map(item => item.value);
       } else if (input.dataset.liveGroup === 'page') {
         liveSettings.pages[input.value] = input.checked;
+      } else if (input.dataset.liveGroup === 'compare') {
+        const selectedComparisons = new Set(liveSettings.pages.compare);
+        if (input.checked) selectedComparisons.add(input.value);
+        else selectedComparisons.delete(input.value);
+        liveSettings.pages.compare = [...selectedComparisons];
       } else {
         const selectedSensors = new Set(liveSettings.pages.sensors);
         if (input.checked) selectedSensors.add(input.value);
@@ -542,7 +584,7 @@ function renderLiveCarousel() {
   const track = document.getElementById('liveTrack');
   const nav = document.getElementById('liveNav');
   const current = livePages[livePage];
-  const currentKey = current && `${current.module}|${current.type}|${current.sensor || ''}`;
+  const currentKey = current && livePageKey(current);
   Object.values(liveCharts).forEach(chart => chart.destroy());
   liveCharts = {};
   track.replaceChildren();
@@ -566,6 +608,24 @@ function renderLiveCarousel() {
         livePages.push({ module, type: 'sensor', sensor, label: liveSensorLabel(sensor) });
       }
     });
+  });
+  liveSettings.pages.compare.forEach(comparison => {
+    const isSensor = comparison.startsWith('sensor:');
+    const type = isSensor ? 'sensor' : 'compare';
+    const sensor = isSensor ? comparison.slice('sensor:'.length) : null;
+    const metric = isSensor ? 'sensor' : comparison;
+    const hasData = liveSettings.rooms.some(module =>
+      getLiveRoomPoints(module, metric, sensor).length > 0);
+    const locked = liveSettings.rooms.some(module =>
+      PAYLOAD.locked_modules?.includes(module) &&
+      !PAYLOAD.sensors.some(name => PAYLOAD.data[name]?.[module]?.length));
+    if (hasData || locked) {
+      const definition = LIVE_PAGE_DEFS.find(item => item.key === comparison);
+      const label = isSensor
+        ? `${LIVE_COMPARISON_PREFIX}${liveSensorLabel(sensor)}`
+        : `${LIVE_COMPARISON_PREFIX}${definition.label}`;
+      livePages.push({ module: 'Alle Räume', type, metric, sensor, label });
+    }
   });
 
   if (!livePages.length) {
@@ -610,18 +670,19 @@ function renderLiveCarousel() {
     button.setAttribute('aria-label', `${page.module} · ${page.label}`);
     button.setAttribute('aria-pressed', String(index === 0));
     const roomShort = page.module === 'Wohnzimmer' ? 'W'
-      : page.module === 'Schlafzimmer' ? 'S' : 'Z';
+      : page.module === 'Schlafzimmer' ? 'S'
+        : page.module === 'Zimmer' ? 'Z' : 'Alle';
     const pageShort = LIVE_PAGE_DEFS.find(definition =>
       definition.key === page.type)?.short ||
-      (page.sensor === 'Noise' ? 'dB'
+      (page.type === 'compare' ? page.label.replace(LIVE_COMPARISON_PREFIX, '')
+        : page.sensor === 'Noise' ? 'dB'
         : page.sensor === 'Pressure' ? 'hPa' : liveSensorLabel(page.sensor));
     button.textContent = `${roomShort} ${pageShort}`;
     button.addEventListener('click', () => showLivePage(index));
     nav.appendChild(button);
   });
   const restoredIndex = currentKey
-    ? livePages.findIndex(page =>
-      `${page.module}|${page.type}|${page.sensor || ''}` === currentKey)
+    ? livePages.findIndex(page => livePageKey(page) === currentKey)
     : -1;
   livePage = restoredIndex >= 0 ? restoredIndex : Math.min(livePage, livePages.length - 1);
   updateLivePage();
@@ -638,8 +699,11 @@ function escapeLiveHtml(value) {
 }
 
 function liveSlideMarkup(page, index) {
-  const title = page.type === 'sensor' ? escapeLiveHtml(liveSensorLabel(page.sensor))
-    : LIVE_PAGE_DEFS.find(definition => definition.key === page.type).title;
+  const comparison = page.type === 'compare' ||
+    (page.type === 'sensor' && page.module === 'Alle Räume');
+  const title = comparison ? escapeLiveHtml(page.label.replace(LIVE_COMPARISON_PREFIX, ''))
+    : page.type === 'sensor' ? escapeLiveHtml(liveSensorLabel(page.sensor))
+      : LIVE_PAGE_DEFS.find(definition => definition.key === page.type).title;
   const kicker = `<div class="live-room-kicker"></div><h2>${title}</h2>`;
   const chartId = `live-chart-${index}`;
   if (page.type === 'analysis') {
@@ -654,6 +718,18 @@ function liveSlideMarkup(page, index) {
       </div>
       <div class="live-page-footer"><span data-metric="updated"></span><span>Index aus Temperatur, Feuchte und CO₂</span></div>
       <div class="live-page-lock" data-live-lock>Bitte zuerst auf einer Temperaturseite die Innenraumdaten entsperren.</div>
+    </section>`;
+  }
+  if (comparison) {
+    const unit = page.metric === 'temperature' ? '°C'
+      : page.metric === 'co2' ? 'ppm'
+        : page.metric === 'humidity' ? '%' : escapeLiveHtml(PAYLOAD.units[page.sensor] || '');
+    return `<section class="live-page-panel">
+      <div class="live-page-head"><div>${kicker}</div><span class="live-room-footer">Aktuelle Werte je ausgewähltem Raum</span></div>
+      <div class="live-comparison-values" data-comparison-values></div>
+      <div class="live-page-chart-wrap"><canvas id="${chartId}" aria-label="${title} aller ausgewählten Räume"></canvas></div>
+      <div class="live-page-footer"><span data-live-updated></span><span>${unit} · Verlauf der letzten 24 Stunden</span></div>
+      <div class="live-page-lock" data-live-lock>Bitte zuerst die Innenraumdaten entsperren.</div>
     </section>`;
   }
   const unit = page.type === 'temperature' ? '°C'
@@ -1499,11 +1575,163 @@ function updateLiveAnalysis(slide, module) {
     ? `Letzte Messung · ${formatLiveRoomTime(Math.max(...times))}` : 'Keine Messwerte verfügbar';
 }
 
+function updateLiveComparison(slide, page) {
+  const comparisonValues = slide.querySelector('[data-comparison-values]');
+  const series = liveSettings.rooms.map((module, index) => ({
+    module,
+    points: getLiveRoomPoints(module, page.metric, page.sensor),
+    color: PAYLOAD.colors[module] || MODULE_COLORS_LIVE[index % MODULE_COLORS_LIVE.length],
+  })).filter(item => item.points.length);
+  comparisonValues.replaceChildren();
+  const allPoints = series.flatMap(item => item.points);
+  const lock = slide.querySelector('[data-live-lock]');
+  lock.hidden = allPoints.length > 0;
+  if (!allPoints.length) {
+    lock.textContent = PAYLOAD.locked_enc
+      ? 'Bitte zuerst die Innenraumdaten auf einer Raumseite entsperren.'
+      : 'Für die ausgewählten Räume sind keine Messwerte dieser Art im Export enthalten.';
+    slide.querySelector('[data-live-updated]').textContent = 'Keine Messwerte verfügbar';
+    if (liveCharts[livePages.indexOf(page)]) {
+      liveCharts[livePages.indexOf(page)].destroy();
+      delete liveCharts[livePages.indexOf(page)];
+    }
+    return;
+  }
+  const latestTs = Math.max(...series.map(item => item.points[item.points.length - 1][0]));
+  const unit = page.metric === 'temperature' ? '°C'
+    : page.metric === 'co2' ? 'ppm'
+      : page.metric === 'humidity' ? '%' : PAYLOAD.units[page.sensor] || '';
+  const datasets = series.map(item => {
+    const latestValue = item.points[item.points.length - 1][1];
+    const reading = document.createElement('div');
+    reading.className = 'live-comparison-value';
+    reading.style.setProperty('--room-color', item.color);
+    const roomLabel = document.createElement('span');
+    roomLabel.textContent = item.module;
+    const valueLabel = document.createElement('strong');
+    valueLabel.textContent =
+      `${Number(latestValue).toLocaleString('de-DE', { maximumFractionDigits: 1 })} ${unit}`;
+    reading.append(roomLabel, valueLabel);
+    comparisonValues.appendChild(reading);
+    return {
+      label: item.module,
+      data: item.points
+        .filter(([ts]) => ts >= latestTs - LIVE_ROOM_WINDOW_MS)
+        .map(([x, y]) => ({ x, y })),
+      borderColor: item.color,
+      backgroundColor: `${item.color}22`,
+      borderWidth: 3,
+      pointRadius: 0,
+      pointHitRadius: 12,
+      tension: .2,
+      fill: false,
+    };
+  });
+  const thresholds = page.metric === 'temperature'
+    ? [{ value: 20, label: '20 °C', color: '#d8bd83' }]
+    : page.metric === 'co2'
+      ? [
+        { value: 800, label: 'Frische Luft · 800 ppm', color: '#78b99b' },
+        { value: 1000, label: 'Lüften · 1.000 ppm', color: '#d8bd83' },
+      ]
+      : page.metric === 'humidity'
+        ? [
+          { value: 40, label: 'Komfortbereich · 40 %', color: '#789d8b' },
+          { value: 60, label: 'Komfortbereich · 60 %', color: '#789d8b' },
+        ] : [];
+  const chartPoints = series.flatMap(item => item.points
+    .filter(([ts]) => ts >= latestTs - LIVE_ROOM_WINDOW_MS));
+  thresholds.forEach(threshold => datasets.push({
+    label: threshold.label,
+    data: [
+      { x: latestTs - LIVE_ROOM_WINDOW_MS, y: threshold.value },
+      { x: latestTs, y: threshold.value },
+    ],
+    borderColor: threshold.color,
+    borderWidth: 2,
+    borderDash: [8, 7],
+    pointRadius: 0,
+    fill: false,
+  }));
+  const config = {
+    type: 'line',
+    data: { datasets },
+    options: {
+      animation: { duration: 350 },
+      maintainAspectRatio: false,
+      normalized: true,
+      parsing: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { labels: { color: '#91abc4', usePointStyle: true, boxWidth: 10, padding: 18 } },
+        tooltip: {
+          backgroundColor: '#10253b',
+          borderColor: '#294763',
+          borderWidth: 1,
+          titleColor: '#b7d8ee',
+          bodyColor: '#a9c9e8',
+          callbacks: {
+            label: context => ` ${context.dataset.label}: ${context.parsed.y.toLocaleString('de-DE', { maximumFractionDigits: 1 })} ${unit}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'time',
+          min: latestTs - LIVE_ROOM_WINDOW_MS,
+          max: latestTs,
+          grid: { color: 'rgba(101, 139, 173, .12)' },
+          border: { color: '#294763' },
+          ticks: { color: '#7898b6', maxTicksLimit: 8, maxRotation: 0 },
+        },
+        y: {
+          ...(page.metric === 'humidity' ? { min: 0, max: 100 } : {}),
+          ...(page.metric === 'co2' ? { min: 350 } : {}),
+          ...(page.metric === 'temperature' && chartPoints.length ? {
+            suggestedMin: Math.min(16, ...chartPoints.map(([, value]) => value - 1)),
+            suggestedMax: Math.max(24, ...chartPoints.map(([, value]) => value + 1)),
+          } : {}),
+          grid: {
+            color: context => thresholds.some(threshold =>
+              Math.abs(context.tick.value - threshold.value) < .001)
+              ? 'rgba(216, 189, 131, .28)' : 'rgba(101, 139, 173, .12)',
+          },
+          border: { color: '#294763' },
+          ticks: {
+            color: '#7898b6',
+            callback: tick => `${Number(tick).toLocaleString('de-DE', { maximumFractionDigits: 0 })} ${unit}`,
+          },
+        },
+      },
+    },
+  };
+  const chartIndex = livePages.indexOf(page);
+  if (liveCharts[chartIndex]) {
+    liveCharts[chartIndex].data = config.data;
+    liveCharts[chartIndex].options = config.options;
+    liveCharts[chartIndex].update();
+  } else {
+    liveCharts[chartIndex] = new Chart(
+      slide.querySelector('canvas').getContext('2d'), config);
+  }
+  slide.querySelector('[data-live-updated]').textContent =
+    `Letzte Messung · ${formatLiveRoomTime(latestTs)}`;
+}
+
+const MODULE_COLORS_LIVE = [
+  '#78bce4', '#78b99b', '#d8bd83', '#9f9bd8', '#c78278', '#8fb6cf',
+];
+
 function refreshLiveRoomTemperature() {
   livePages.forEach((page, index) => {
     const slide = document.getElementById(`live-slide-${index}`);
     if (!slide) return;
     const lock = slide.querySelector('[data-live-lock]');
+    if (page.type === 'compare' ||
+        (page.type === 'sensor' && page.module === 'Alle Räume')) {
+      updateLiveComparison(slide, page);
+      return;
+    }
     if (page.type === 'analysis') {
       const series = ['temperature', 'humidity', 'co2']
         .map(type => getLiveRoomPoints(page.module, type));

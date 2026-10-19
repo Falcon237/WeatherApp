@@ -30,7 +30,9 @@ Der Live-Tab kann Ansichten fuer Wohnzimmer, Schlafzimmer und Zimmer in einem
 Karussell kombinieren. Raum- und Seiten-Auswahl (Temperatur, CO₂, Feuchte,
 Raumklima-Uebersicht sowie verfuegbare Zusatzsensoren wie Geraeusch und
 Luftdruck) laesst sich direkt per Checkbox anpassen; die Auswahl wird im
-Browser gespeichert. Nicht vorhandene Sensoren erzeugen keine Karussellseite.
+Browser gespeichert. Zusaetzliche Sammelseiten zeigen Temperatur, CO2, Feuchte
+oder Zusatzsensoren aller ausgewaehlten Raeume gemeinsam mit aktuellen Werten
+und Verlauf. Nicht vorhandene Sensoren erzeugen keine Karussellseite.
 Die Innenraumdaten bleiben verschluesselt; zum Anzeigen zuerst das
 Innenraum-Passwort auf einer Temperaturseite eingeben. Vollbild blendet
 Bedienelemente aus. Das Wechselintervall ist fuer eine gut lesbare Anzeige auf
