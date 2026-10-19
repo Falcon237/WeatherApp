@@ -1271,6 +1271,7 @@ async function unlockIndoor(inputId = 'indoorPwInput', messageId = 'indoorLockMs
     Object.keys(obj).forEach(sensor => {
       PAYLOAD.data[sensor] = PAYLOAD.data[sensor] || {};
       Object.assign(PAYLOAD.data[sensor], obj[sensor]);
+      selSensors.add(sensor);
     });
     Object.values(obj).forEach(modules => {
       Object.keys(modules).forEach(module => {
@@ -1285,6 +1286,7 @@ async function unlockIndoor(inputId = 'indoorPwInput', messageId = 'indoorLockMs
     buildLiveSelectors();
     renderLiveCarousel();
     buildChips('moduleChips', PAYLOAD.modules, selModules);
+    buildChips('sensorChips', PAYLOAD.sensors, selSensors);
     applyFilters();
   } catch (e) {
     msgEl.classList.add('err');
