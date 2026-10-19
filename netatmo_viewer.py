@@ -4241,27 +4241,50 @@ class ViewerApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         root.title('Netatmo Daten-Viewer')
-        root.geometry('560x560')
-        root.resizable(False, False)
+        root.geometry('900x650')
+        root.minsize(600, 450)
 
         style = ttk.Style()
         style.theme_use('clam')
 
         self.filepath = tk.StringVar()
         self.status = tk.StringVar(value='Bereit.')
+        self._live_interval = tk.StringVar(value='5')
+        self._live_interval_note = tk.StringVar(
+            value='Karussell wechselt alle 5 Sekunden.')
+        self._live_interval_seconds = 5
         self._data = []
         self._source_files = []  # Liste der bereits eingelesenen Dateipfade
         self._direct_import_running = False
+        self._live_page = 1
+        self._live_animation_after = None
+        self._live_timer_after = None
+        self._live_animation_items = None
+        self._live_animation_frame = 0
+        self._live_animation_frames = 14
+        self._fullscreen = False
 
         self._build_ui()
+        root.bind('<Escape>', self._exit_fullscreen)
+        self._schedule_live_advance()
         self._auto_load_cache()
 
     def _build_ui(self):
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        self.live_tab = ttk.Frame(self.notebook)
+        self.data_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.live_tab, text='Live')
+        self.notebook.add(self.data_tab, text='Daten')
+        self.notebook.select(self.live_tab)
+        self._build_live_tab()
+
         pad = {'padx': 16, 'pady': 8}
 
         # ── Datei ──
         file_frame = ttk.LabelFrame(
-            self.root, text='Excel / CSV Datei', padding=10)
+            self.data_tab, text='Excel / CSV Datei', padding=10)
         file_frame.pack(fill=tk.X, **pad)
         file_frame.columnconfigure(0, weight=1)
         ttk.Entry(file_frame, textvariable=self.filepath).grid(
@@ -4294,7 +4317,7 @@ class ViewerApp:
 
         # ── Direktimport ──
         direct_frame = ttk.LabelFrame(
-            self.root, text='Direkt von Netatmo', padding=10)
+            self.data_tab, text='Direkt von Netatmo', padding=10)
         direct_frame.pack(fill=tk.X, **pad)
         direct_frame.columnconfigure(0, weight=1)
         ttk.Label(
@@ -4313,14 +4336,14 @@ class ViewerApp:
 
         # ── Info ──
         info_frame = ttk.LabelFrame(
-            self.root, text='Geladene Daten', padding=10)
+            self.data_tab, text='Geladene Daten', padding=10)
         info_frame.pack(fill=tk.X, **pad)
         self.info_text = tk.Text(info_frame, height=8, state=tk.DISABLED,
                                  background='#f5f5f5', relief='flat', wrap=tk.WORD)
         self.info_text.pack(fill=tk.X)
 
         # ── Öffnen ──
-        action_frame = ttk.Frame(self.root)
+        action_frame = ttk.Frame(self.data_tab)
         action_frame.pack(pady=(0, 8))
         self.btn_open = ttk.Button(
             action_frame, text='Im Browser öffnen  ➜', command=self._open,
@@ -4336,8 +4359,131 @@ class ViewerApp:
         self.btn_export_pages.pack(side=tk.LEFT)
 
         # ── Status ──
-        ttk.Label(self.root, textvariable=self.status, foreground='gray',
+        ttk.Label(self.data_tab, textvariable=self.status, foreground='gray',
                   font=('Segoe UI', 9)).pack()
+
+    def _build_live_tab(self):
+        controls = ttk.Frame(self.live_tab, padding=(12, 10))
+        controls.pack(fill=tk.X)
+
+        ttk.Label(controls, text='Intervall (Sek.):').pack(
+            side=tk.LEFT, padx=(0, 6))
+        interval = ttk.Spinbox(
+            controls, from_=1, to=3600, increment=1, width=6,
+            textvariable=self._live_interval)
+        interval.pack(side=tk.LEFT)
+        interval.bind('<Return>', self._apply_live_interval)
+        interval.bind('<FocusOut>', self._apply_live_interval)
+        ttk.Button(
+            controls, text='Übernehmen',
+            command=self._apply_live_interval).pack(side=tk.LEFT, padx=6)
+        ttk.Label(
+            controls, textvariable=self._live_interval_note,
+            foreground='gray').pack(side=tk.LEFT, padx=8)
+        self._fullscreen_button = ttk.Button(
+            controls, text='Vollbild', command=self._toggle_fullscreen)
+        self._fullscreen_button.pack(side=tk.RIGHT)
+
+        self.live_canvas = tk.Canvas(
+            self.live_tab, background='#111827', highlightthickness=0)
+        self.live_canvas.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        self._live_current_item = self.live_canvas.create_text(
+            0, 0, text='1', fill='white',
+            font=('Segoe UI', 144, 'bold'))
+        self.live_canvas.bind('<Configure>', self._center_live_page)
+        self.root.after_idle(self._center_live_page)
+
+    def _center_live_page(self, _event=None):
+        if self._live_animation_items is None:
+            self.live_canvas.coords(
+                self._live_current_item,
+                self.live_canvas.winfo_width() / 2,
+                self.live_canvas.winfo_height() / 2)
+
+    def _schedule_live_advance(self):
+        if self._live_timer_after is not None:
+            self.root.after_cancel(self._live_timer_after)
+        self._live_timer_after = self.root.after(
+            self._live_interval_seconds * 1000,
+            self._advance_live_page)
+
+    def _advance_live_page(self):
+        self._live_timer_after = None
+        if self._live_animation_items is not None:
+            self._schedule_live_advance()
+            return
+
+        next_page = self._live_page % 4 + 1
+        width = self.live_canvas.winfo_width()
+        center_x = width / 2
+        center_y = self.live_canvas.winfo_height() / 2
+        incoming = self.live_canvas.create_text(
+            center_x + width, center_y, text=str(next_page), fill='white',
+            font=('Segoe UI', 144, 'bold'))
+        self._live_animation_items = (self._live_current_item, incoming)
+        self._live_animation_frame = 0
+        self._animate_live_page()
+        self._schedule_live_advance()
+
+    def _animate_live_page(self):
+        frame = self._live_animation_frame
+        progress = frame / self._live_animation_frames
+        center_x = self.live_canvas.winfo_width() / 2
+        center_y = self.live_canvas.winfo_height() / 2
+        width = self.live_canvas.winfo_width()
+        outgoing, incoming = self._live_animation_items
+        self.live_canvas.coords(
+            outgoing, center_x - width * progress, center_y)
+        self.live_canvas.coords(
+            incoming, center_x + width * (1 - progress), center_y)
+
+        if frame >= self._live_animation_frames:
+            self.live_canvas.delete(outgoing)
+            self._live_current_item = incoming
+            self._live_page = self._live_page % 4 + 1
+            self._live_animation_items = None
+            self._live_animation_after = None
+            return
+
+        self._live_animation_frame += 1
+        self._live_animation_after = self.root.after(
+            25, self._animate_live_page)
+
+    def _apply_live_interval(self, _event=None):
+        try:
+            seconds = int(self._live_interval.get())
+        except ValueError:
+            messagebox.showwarning(
+                'Ungültiges Intervall',
+                'Bitte eine ganze Zahl zwischen 1 und 3600 eingeben.')
+            self._live_interval.set(str(self._live_interval_seconds))
+            return 'break'
+
+        if not 1 <= seconds <= 3600:
+            messagebox.showwarning(
+                'Ungültiges Intervall',
+                'Das Intervall muss zwischen 1 und 3600 Sekunden liegen.')
+            self._live_interval.set(str(self._live_interval_seconds))
+            return 'break'
+
+        self._live_interval_seconds = seconds
+        self._live_interval.set(str(seconds))
+        self._live_interval_note.set(
+            f'Karussell wechselt alle {seconds} Sekunden.')
+        self._schedule_live_advance()
+        return 'break'
+
+    def _toggle_fullscreen(self):
+        self._fullscreen = not self._fullscreen
+        self.root.attributes('-fullscreen', self._fullscreen)
+        self._fullscreen_button.config(
+            text='Vollbild beenden' if self._fullscreen else 'Vollbild')
+
+    def _exit_fullscreen(self, _event=None):
+        if self._fullscreen:
+            self._fullscreen = False
+            self.root.attributes('-fullscreen', False)
+            self._fullscreen_button.config(text='Vollbild')
 
     # ── Persistenz ──
     def _auto_load_cache(self):
