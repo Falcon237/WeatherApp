@@ -2,8 +2,12 @@ name: WeatherApp aktualisieren
 
 on:
   schedule:
-    - cron: '0 5 * * *'   # täglich 05:00 UTC
+    - cron: '*/5 * * * *' # alle 5 Minuten (GitHub Actions Mindestintervall)
   workflow_dispatch:       # manuell auslösbar
+
+concurrency:
+  group: netatmo-weatherapp-update
+  cancel-in-progress: false
 
 jobs:
   update:
@@ -40,19 +44,18 @@ jobs:
           : "${NETATMO_CLIENT_ID:?GitHub Actions secret NETATMO_CLIENT_ID is missing}"
           : "${NETATMO_CLIENT_SECRET:?GitHub Actions secret NETATMO_CLIENT_SECRET is missing}"
           : "${NETATMO_REFRESH_TOKEN:?GitHub Actions secret NETATMO_REFRESH_TOKEN is missing}"
-          # Skript ausführen; letzte Zeile enthält NEW_REFRESH_TOKEN=<wert>
+          # Der neue Refresh-Token wird direkt nach der Rotation in GITHUB_OUTPUT geschrieben.
           python fetch_and_export.py | tee /tmp/fetch_output.txt
-          NEW_TOKEN=$(grep '^NEW_REFRESH_TOKEN=' /tmp/fetch_output.txt | cut -d= -f2-)
-          echo "new_refresh_token=${NEW_TOKEN}" >> "$GITHUB_OUTPUT"
 
       - name: Refresh-Token im Secret rotieren
-        if: steps.fetch.outputs.new_refresh_token != ''
+        if: always() && steps.fetch.outputs.new_refresh_token != ''
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
+          NEW_REFRESH_TOKEN: ${{ steps.fetch.outputs.new_refresh_token }}
         run: |
-          echo "${{ steps.fetch.outputs.new_refresh_token }}" \
-            | gh secret set NETATMO_REFRESH_TOKEN \
-                --repo "${{ github.repository }}"
+          gh secret set NETATMO_REFRESH_TOKEN \
+            --body "$NEW_REFRESH_TOKEN" \
+            --repo "${{ github.repository }}"
 
       - name: docs/data.json in Cache sichern
         if: always()
@@ -66,7 +69,7 @@ jobs:
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
           # docs/data.json ist absichtlich in .gitignore (>100MB, GitHub-Limit)
-          git add docs/index.html docs/.nojekyll
+          git add docs/index.html docs/data-version.json docs/.nojekyll
           if git diff --cached --quiet; then
             echo "Keine neuen Daten – kein Commit nötig."
           else

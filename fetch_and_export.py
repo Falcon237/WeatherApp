@@ -11,17 +11,20 @@ Umgebungsvariablen (GitHub Secrets):
   NETATMO_CLIENT_SECRET
   NETATMO_REFRESH_TOKEN   ← wird nach Ausführung aktualisiert (Rotation!)
 
-Gibt am Ende die neue Zeile "NEW_REFRESH_TOKEN=<wert>" aus,
-damit der GitHub-Actions-Step den Secret via gh CLI aktualisieren kann.
+Speichert einen erneuerten Refresh-Token sofort lokal und in GITHUB_OUTPUT,
+damit GitHub Actions ihn auch bei einem später fehlgeschlagenen Datenabruf sichern kann.
 
 Abhängigkeiten: nur Python-Stdlib (kein requests, kein tkinter).
 """
 
 import datetime
+import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
+from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
@@ -46,6 +49,7 @@ _UNIT_MAP: dict[str, str] = {
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _DATA_FILE = _SCRIPT_DIR / 'docs' / 'data.json'
 _HTML_FILE = _SCRIPT_DIR / 'docs' / 'index.html'
+_VERSION_FILE = _SCRIPT_DIR / 'docs' / 'data-version.json'
 
 
 # ── Hilfsfunktionen ────────────────────────────────────────────────────────────
@@ -62,8 +66,27 @@ def _api_get(url: str, params: dict, access_token: str) -> dict:
     qs = urllib_parse.urlencode(params)
     req = urllib_request.Request(f'{url}?{qs}')
     req.add_header('Authorization', f'Bearer {access_token}')
-    with urllib_request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read())
+    retries = 3
+    for attempt in range(retries + 1):
+        try:
+            with urllib_request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read())
+        except urllib_error.HTTPError as error:
+            if error.code not in (429, 500, 502, 503, 504) or attempt == retries:
+                raise
+            retry_after = error.headers.get('Retry-After')
+            delay = min(int(retry_after), 60) if retry_after and retry_after.isdigit() \
+                else 2 ** (attempt + 1)
+            print(f'Netatmo-API HTTP {error.code}; erneuter Versuch '
+                  f'{attempt + 1}/{retries} in {delay} Sekunden.')
+            error.close()
+        except (urllib_error.URLError, TimeoutError, ConnectionError) as error:
+            if attempt == retries:
+                raise
+            delay = 2 ** (attempt + 1)
+            print(f'Netzwerkfehler bei Netatmo-API ({error}); erneuter Versuch '
+                  f'{attempt + 1}/{retries} in {delay} Sekunden.')
+        time.sleep(delay)
 
 
 # ── Token-Verwaltung ───────────────────────────────────────────────────────────
@@ -251,14 +274,19 @@ def generate_html(payload: dict) -> str:
 
     template = source[s + len(start_marker):e]
     json_str = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
-    return template.replace('__PAYLOAD__', json_str)
+    version = hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+    return (template.replace('__DATA_VERSION__', version)
+            .replace('__PAYLOAD__', json_str))
 
 
-def write_html(html: str) -> None:
+def write_html(html: str, payload: dict) -> None:
     _HTML_FILE.parent.mkdir(parents=True, exist_ok=True)
     nojekyll = _HTML_FILE.parent / '.nojekyll'
     nojekyll.touch()
     _HTML_FILE.write_text(html, encoding='utf-8')
+    json_str = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+    version = hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+    _VERSION_FILE.write_text(json.dumps({'version': version}), encoding='utf-8')
     size_kb = len(html.encode()) // 1024
     print(f'index.html geschrieben ({size_kb} KB).')
 
@@ -299,6 +327,15 @@ def _save_local_refresh_token(new_token: str) -> None:
             pass
     existing['refresh_token'] = new_token
     _TOKENS_FILE.write_text(json.dumps(existing), encoding='utf-8')
+
+
+def _persist_rotated_refresh_token(new_token: str) -> None:
+    github_output = os.environ.get('GITHUB_OUTPUT')
+    if github_output:
+        print(f'::add-mask::{new_token}')
+        with open(github_output, 'a', encoding='utf-8') as output:
+            output.write(f'new_refresh_token={new_token}\n')
+    _save_local_refresh_token(new_token)
 
 
 def _save_local_creds(client_id: str, client_secret: str) -> None:
@@ -349,6 +386,7 @@ def main() -> None:
     access_token, new_refresh_token = refresh_access_token(
         client_id, client_secret, refresh_token)
     print('Token erfolgreich erneuert.')
+    _persist_rotated_refresh_token(new_refresh_token)
 
     # ── Zeitraum bestimmen ───────────────────────────────────────────────────
     existing = load_existing_data()
@@ -399,13 +437,7 @@ def main() -> None:
     print('Generiere HTML…')
     payload = prepare_payload(merged)
     html = generate_html(payload)
-    write_html(html)
-
-    # ── Neuen Refresh-Token speichern / ausgeben ──────────────────────────────
-    # Lokal aktualisieren (für direkte Ausführung); GitHub Actions liest stdout
-    _save_local_refresh_token(new_refresh_token)
-    print(f'NEW_REFRESH_TOKEN={new_refresh_token}')
-
+    write_html(html, payload)
 
 if __name__ == '__main__':
     main()

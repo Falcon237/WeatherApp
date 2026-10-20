@@ -13,6 +13,7 @@ except Exception:
 import datetime
 import csv
 import os
+import hashlib
 import json
 import gzip
 import pickle
@@ -667,6 +668,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button type="button" onclick="applyLiveInterval()">Übernehmen</button>
     <button type="button" id="fullscreenButton" onclick="toggleLiveFullscreen()">Vollbild</button>
     <span class="live-status" id="liveStatus" role="status" aria-live="polite">Wechsel alle 15 Sekunden</span>
+    <span class="live-status" id="liveDataStatus" role="status" aria-live="polite">Datenprüfung alle 60 Sekunden</span>
   </div>
   <div class="live-selection" aria-label="Karussell-Inhalte wählen">
     <div class="live-selection-group" id="liveModuleChoices">
@@ -748,12 +750,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 <script>
 const PAYLOAD = __PAYLOAD__;
+const DATA_VERSION = '__DATA_VERSION__';
 
 let livePage = 0;
 let liveIntervalMs = 15000;
 let liveTimer = null;
 let livePages = [];
 let liveCharts = {};
+const LIVE_DATA_CHECK_INTERVAL_MS = 60 * 1000;
 const LIVE_SETTINGS_KEY = 'netatmo-live-carousel-v1';
 const LIVE_ROOM_WINDOW_MS = 24 * 60 * 60 * 1000;
 const LIVE_COMPARISON_PREFIX = 'Alle ausgewählten Räume · ';
@@ -858,6 +862,33 @@ function scheduleLiveAdvance() {
   clearTimeout(liveTimer);
   if (!livePages.length) return;
   liveTimer = setTimeout(() => showLivePage(livePage + 1), liveIntervalMs);
+}
+
+async function checkForUpdatedData() {
+  const status = document.getElementById('liveDataStatus');
+  const versionUrl = new URL('data-version.json', document.baseURI);
+  versionUrl.searchParams.set('_', String(Date.now()));
+  try {
+    const response = await fetch(versionUrl, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const published = await response.json();
+    if (typeof published.version !== 'string' || !published.version) {
+      throw new Error('Ungültige Versionsdatei');
+    }
+    if (published.version !== DATA_VERSION) {
+      status.textContent = 'Neue Netatmo-Daten erkannt; Seite wird aktualisiert.';
+      const refreshedUrl = new URL(window.location.href);
+      refreshedUrl.searchParams.set('dataVersion', published.version);
+      window.location.replace(refreshedUrl);
+      return;
+    }
+    status.textContent = `Daten geprüft: ${new Date().toLocaleTimeString('de-DE')}`;
+  } catch (error) {
+    console.warn('Netatmo-Daten konnten nicht auf Aktualisierungen geprüft werden:', error);
+    status.textContent = `Datenprüfung fehlgeschlagen: ${error.message}`;
+  }
 }
 
 function livePageKey(page) {
@@ -5491,6 +5522,12 @@ window.addEventListener('load', () => {
   document.getElementById('liveInterval').value = '15';
   buildLiveSelectors();
   renderLiveCarousel();
+  if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+    setInterval(checkForUpdatedData, LIVE_DATA_CHECK_INTERVAL_MS);
+  } else {
+    document.getElementById('liveDataStatus').textContent =
+      'Automatische Datenprüfung nur auf der veröffentlichten Website.';
+  }
   const bounds = getDateBounds();
   document.getElementById('dateFrom').value = bounds.min;
   document.getElementById('dateTo').value   = bounds.max;
@@ -5515,7 +5552,9 @@ window.addEventListener('load', () => {
 
 def generate_html(payload: dict) -> str:
     json_str = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
-    return HTML_TEMPLATE.replace('__PAYLOAD__', json_str)
+    version = hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+    return (HTML_TEMPLATE.replace('__DATA_VERSION__', version)
+            .replace('__PAYLOAD__', json_str))
 
 
 def open_in_browser(html: str, title: str = 'netatmo_viewer') -> str:
@@ -5532,12 +5571,19 @@ def default_pages_index_path() -> str:
     return os.path.join(folder, 'docs', 'index.html')
 
 
-def export_html(html: str, path: str | None = None) -> str:
+def export_html(html: str, path: str | None = None, *,
+                payload: dict) -> str:
     """Schreibt die Viewer-HTML als veröffentlichbare statische App."""
     target = path or default_pages_index_path()
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, 'w', encoding='utf-8') as f:
         f.write(html)
+
+    json_str = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+    version_path = os.path.join(os.path.dirname(target), 'data-version.json')
+    with open(version_path, 'w', encoding='utf-8') as f:
+        json.dump({'version': hashlib.sha256(json_str.encode('utf-8')).hexdigest()},
+                  f, separators=(',', ':'))
 
     nojekyll_path = os.path.join(os.path.dirname(target), '.nojekyll')
     with open(nojekyll_path, 'a', encoding='utf-8'):
@@ -6211,7 +6257,7 @@ class ViewerApp:
 
             payload = prepare_chart_payload(data)
             html = generate_html(payload)
-            export_html(html)
+            export_html(html, payload=payload)
             open(os.path.join(docs_dir, '.nojekyll'), 'a').close()
 
             # Ermittle den aktuellen Branch (funktioniert mit main, master, gh-pages)
@@ -6221,8 +6267,9 @@ class ViewerApp:
             self.root.after(0, lambda: self.status.set(
                 f'GitHub Pages: git push → {branch}…'))
 
-            # data.json nicht in git (zu groß); nur HTML und .nojekyll
-            _run(['git', 'add', 'docs/index.html', 'docs/.nojekyll'])
+            # data.json nicht in git (zu groß); HTML, Versionsdatei und .nojekyll
+            _run(['git', 'add', 'docs/index.html', 'docs/data-version.json',
+                  'docs/.nojekyll'])
             diff = subprocess.run(
                 ['git', 'diff', '--cached', '--quiet'], cwd=repo_root)
             if diff.returncode != 0:
@@ -6308,7 +6355,7 @@ class ViewerApp:
         try:
             payload = prepare_chart_payload(self._data)
             html = generate_html(payload)
-            path = export_html(html)
+            path = export_html(html, payload=payload)
             self.status.set(f'GitHub-Pages-App exportiert: {path}')
             messagebox.showinfo(
                 'GitHub Pages Export',
