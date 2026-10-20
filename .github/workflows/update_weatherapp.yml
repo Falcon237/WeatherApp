@@ -44,6 +44,7 @@ jobs:
           : "${NETATMO_CLIENT_ID:?GitHub Actions secret NETATMO_CLIENT_ID is missing}"
           : "${NETATMO_CLIENT_SECRET:?GitHub Actions secret NETATMO_CLIENT_SECRET is missing}"
           : "${NETATMO_REFRESH_TOKEN:?GitHub Actions secret NETATMO_REFRESH_TOKEN is missing}"
+          : "${NETATMO_VIEWER_PASSWORD:?GitHub Actions secret NETATMO_VIEWER_PASSWORD is missing; set it to the password used to unlock indoor data}"
           # Der neue Refresh-Token wird direkt nach der Rotation in GITHUB_OUTPUT geschrieben.
           python fetch_and_export.py | tee /tmp/fetch_output.txt
 
