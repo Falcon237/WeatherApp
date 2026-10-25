@@ -686,13 +686,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <div class="layout" id="app-data" hidden>
   <div class="sidebar">
     <h3>Zeitraum</h3>
-    <div class="preset-row">
-      <button class="preset-btn" onclick="setPreset(7)">7T</button>
-      <button class="preset-btn" onclick="setPreset(30)">30T</button>
-      <button class="preset-btn" onclick="setPreset(90)">90T</button>
-      <button class="preset-btn" onclick="setPreset(365)">1J</button>
-      <button class="preset-btn" onclick="setPreset(1825)">5J</button>
-      <button class="preset-btn" onclick="setPreset(0)">Alles</button>
+    <div class="preset-row" id="presetRow">
+      <button class="preset-btn" data-days="7" onclick="setPreset(7)">7T</button>
+      <button class="preset-btn" data-days="30" onclick="setPreset(30)">30T</button>
+      <button class="preset-btn" data-days="90" onclick="setPreset(90)">90T</button>
+      <button class="preset-btn" data-days="365" onclick="setPreset(365)">1J</button>
+      <button class="preset-btn" data-days="1825" onclick="setPreset(1825)">5J</button>
+      <button class="preset-btn" data-days="0" onclick="setPreset(0)">Alles</button>
     </div>
     <div class="date-row"><label>Von</label><input type="date" id="dateFrom"></div>
     <div class="date-row"><label>Bis</label><input type="date" id="dateTo"></div>
@@ -5487,6 +5487,34 @@ function renderCurrentView() {
   else if (currentView === 'indoor')   renderIndoor(lastFilteredRaw);
 }
 
+/* Markiert den Zeitraum-Button, der zu Von/Bis passt (Alles, 7T … 5J), sonst keinen. */
+function updatePresetHighlight() {
+  const row = document.getElementById('presetRow');
+  if (!row) return;
+  const from = document.getElementById('dateFrom').value;
+  const to   = document.getElementById('dateTo').value;
+  const bounds = getDateBounds();
+  let active = null;
+  if (from === bounds.min && to === bounds.max) {
+    active = '0';
+  } else if (to === bounds.max && from) {
+    const maxMs = new Date(bounds.max).getTime();
+    for (const days of [7, 30, 90, 365, 1825]) {
+      const iso = new Date(maxMs - days * 86400000).toISOString().slice(0, 10);
+      if (from === (iso < bounds.min ? bounds.min : iso)) { active = String(days); break; }
+    }
+  }
+  row.querySelectorAll('.preset-btn').forEach(b =>
+    b.classList.toggle('active-range', b.dataset.days === active));
+}
+
+/* Getippte Daten sofort übernehmen, sobald ein vollständiges, plausibles Datum da ist. */
+function onDateInputChange() {
+  const ok = id => /^\d{4}-\d{2}-\d{2}$/.test(document.getElementById(id).value)
+    && +document.getElementById(id).value.slice(0, 4) >= 1990;
+  if (ok('dateFrom') && ok('dateTo')) applyFilters();
+}
+
 function applyFilters(options = {}) {
   const from = document.getElementById('dateFrom').value;
   const to   = document.getElementById('dateTo').value;
@@ -5501,6 +5529,7 @@ function applyFilters(options = {}) {
 
   lastFilteredRaw = rawFiltered;
   lastFiltered = aggregateData(rawFiltered, aggMode);
+  updatePresetHighlight();
   if (!options.deferRender) renderCurrentView();
 
   document.getElementById('fileInfo').textContent =
@@ -5531,6 +5560,8 @@ window.addEventListener('load', () => {
   const bounds = getDateBounds();
   document.getElementById('dateFrom').value = bounds.min;
   document.getElementById('dateTo').value   = bounds.max;
+  document.getElementById('dateFrom').addEventListener('change', onDateInputChange);
+  document.getElementById('dateTo').addEventListener('change', onDateInputChange);
   applyDefaultSelection();
   buildChips('moduleChips', PAYLOAD.modules, selModules);
   buildChips('sensorChips', PAYLOAD.sensors, selSensors);
