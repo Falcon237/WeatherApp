@@ -3,7 +3,7 @@
 Headless-Skript für GitHub Actions:
   - Liest Netatmo-Daten via Refresh-Token (kein Browser nötig)
   - Fügt neue Punkte zur bestehenden docs/data.json hinzu (Delta-Update)
-  - Hält maximal MAX_DAYS Tage an Daten vor
+  - Behält alle Daten ab HISTORY_START (Backfill älterer Lücken inklusive)
   - Regeneriert docs/index.html
 
 Umgebungsvariablen (GitHub Secrets):
@@ -31,7 +31,7 @@ from urllib import request as urllib_request
 import password_lock
 
 # ── Konfiguration ──────────────────────────────────────────────────────────────
-MAX_DAYS = 365 * 2          # maximaler Daten-Horizont (2 Jahre)
+HISTORY_START = datetime.datetime(2016, 1, 1)  # frühester Abruf; keine Kappung älterer Daten
 DELTA_DAYS = 7              # Tage zurück beim Delta-Abruf (Überlappung)
 SCALE = '30min'
 
@@ -193,11 +193,6 @@ def load_existing_data() -> list:
 
 def save_data(data: list) -> None:
     _DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    # Auf MAX_DAYS begrenzen
-    cutoff_ts = (
-        datetime.datetime.now() - datetime.timedelta(days=MAX_DAYS)
-    ).timestamp() * 1000
-    data = [d for d in data if d['ts'] >= cutoff_ts]
     with _DATA_FILE.open('w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
     print(f'data.json: {len(data):,} Punkte gespeichert.')
@@ -398,10 +393,18 @@ def main() -> None:
         print(f'Delta-Modus: ab {start.date()} (letzter Punkt: '
               f'{datetime.datetime.fromtimestamp(last_ts_ms / 1000).date()})')
     else:
-        start = datetime.datetime.now() - datetime.timedelta(days=MAX_DAYS)
+        start = HISTORY_START
         print(f'Erstlauf: lade Daten ab {start.date()}')
 
     end = datetime.datetime.now()
+
+    backfill_end = None
+    if existing:
+        first_dt = datetime.datetime.fromtimestamp(
+            min(d['ts'] for d in existing) / 1000)
+        if first_dt - HISTORY_START > datetime.timedelta(days=1):
+            backfill_end = first_dt + datetime.timedelta(days=1)
+            print(f'Backfill: lade {HISTORY_START.date()} bis {first_dt.date()}')
 
     # ── Stationen laden ───────────────────────────────────────────────────────
     print('Lade Stationsdaten…')
@@ -426,7 +429,15 @@ def main() -> None:
             rows = fetch_sensor(device_id, module_id, info['name'],
                                 sensor_type, start, end, access_token)
             new_rows.extend(rows)
-            print(f'{len(rows)} Punkte')
+            print(f'{len(rows)} Punkte', end='')
+            if backfill_end:
+                # Bestand reicht nicht bis HISTORY_START zurück (z.B. früher gekappt)
+                old = fetch_sensor(device_id, module_id, info['name'],
+                                   sensor_type, HISTORY_START, backfill_end,
+                                   access_token)
+                new_rows.extend(old)
+                print(f' + {len(old)} ältere', end='')
+            print()
 
     # ── Merge + Speichern ─────────────────────────────────────────────────────
     merged, added = merge_data(existing, new_rows)
